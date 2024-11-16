@@ -1,0 +1,39 @@
+/* src/global.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300;
+  }
+  
+  .stats-card {
+    @apply card p-6 hover:scale-105 transition-transform duration-300;
+  }
+  
+  .button-primary {
+    @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 
+    transition-colors duration-300 font-medium shadow-sm hover:shadow-md;
+  }
+  
+  .button-secondary {
+    @apply px-4 py-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 
+    transition-colors duration-300 font-medium;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 
+    focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300;
+  }
+
+  .tab-active {
+    @apply text-blue-600 border-b-2 border-blue-600 font-medium;
+  }
+}

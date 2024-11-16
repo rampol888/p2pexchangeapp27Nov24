@@ -1,0 +1,7 @@
+@font-face {
+    font-family: 'Nexa';
+    src: url('../assets/fonts/Nexa-Heavy.ttf') format('truetype');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
