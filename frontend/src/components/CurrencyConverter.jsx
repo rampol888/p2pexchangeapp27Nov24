@@ -1,142 +1,183 @@
-import React, { useState } from 'react';
-import { ArrowLeftRight, TrendingUp, RefreshCw } from 'lucide-react';
-import { Navigation } from './Navigation';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
-const CurrencyConverter = () => {
+export function CurrencyConverter() {
   const [amount, setAmount] = useState('');
   const [fromCurrency, setFromCurrency] = useState('USD');
   const [toCurrency, setToCurrency] = useState('EUR');
-  const [result, setResult] = useState(null);
+  const [exchangeRate, setExchangeRate] = useState(null);
+  const [convertedAmount, setConvertedAmount] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+  const { token } = useAuth();
 
   const currencies = [
-    { code: 'USD', name: 'US Dollar', symbol: '$', icon: '🇺🇸' },
-    { code: 'EUR', name: 'Euro', symbol: '€', icon: '🇪🇺' },
-    { code: 'GBP', name: 'British Pound', symbol: '£', icon: '🇬🇧' },
-    { code: 'JPY', name: 'Japanese Yen', symbol: '¥', icon: '🇯🇵' },
-    { code: 'AUD', name: 'Australian Dollar', symbol: 'A$', icon: '🇦🇺' },
-    { code: 'CAD', name: 'Canadian Dollar', symbol: 'C$', icon: '🇨🇦' },
-    { code: 'CHF', name: 'Swiss Franc', symbol: 'Fr', icon: '🇨🇭' },
-    { code: 'CNY', name: 'Chinese Yuan', symbol: '¥', icon: '🇨🇳' },
+    { code: 'USD', name: 'US Dollar' },
+    { code: 'EUR', name: 'Euro' },
+    { code: 'GBP', name: 'British Pound' },
+    { code: 'JPY', name: 'Japanese Yen' },
+    { code: 'AUD', name: 'Australian Dollar' },
+    { code: 'CAD', name: 'Canadian Dollar' },
+    { code: 'CHF', name: 'Swiss Franc' },
+    { code: 'INR', name: 'Indian Rupee' }
   ];
 
-  const exchangeRates = {
-    USD: 1,
-    EUR: 0.85,
-    GBP: 0.73,
-    JPY: 110.42,
-    AUD: 1.35,
-    CAD: 1.25,
-    CHF: 0.92,
-    CNY: 6.45,
+  useEffect(() => {
+    if (fromCurrency && toCurrency) {
+      fetchExchangeRate();
+    }
+  }, [fromCurrency, toCurrency]);
+
+  const fetchExchangeRate = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(
+        `https://v6.exchangerate-api.com/v6/e074617efd7dd1aaf176515e/latest/${fromCurrency}`
+      );
+      const data = await response.json();
+      
+      if (data.result === 'success') {
+        const rate = data.conversion_rates[toCurrency];
+        setExchangeRate(rate);
+        if (amount) {
+          setConvertedAmount((amount * rate).toFixed(2));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching exchange rate:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleConvert = () => {
-    const rate = exchangeRates[toCurrency] / exchangeRates[fromCurrency];
-    const convertedAmount = parseFloat(amount) * rate;
-    setResult(convertedAmount.toFixed(2));
+  const handleAmountChange = (e) => {
+    const value = e.target.value;
+    setAmount(value);
+    if (value && exchangeRate) {
+      setConvertedAmount((value * exchangeRate).toFixed(2));
+    } else {
+      setConvertedAmount(null);
+    }
   };
 
-  const handleSwapCurrencies = () => {
-    setFromCurrency(toCurrency);
-    setToCurrency(fromCurrency);
+  const handlePayment = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/payment/create-payment-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          fromCurrency,
+          toCurrency,
+          amount: parseFloat(amount),
+          convertedAmount: parseFloat(convertedAmount)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create payment intent');
+      }
+
+      const data = await response.json();
+      navigate(`/payment?client_secret=${data.clientSecret}&payment_intent=${data.paymentIntentId}`);
+
+    } catch (err) {
+      setError(err.message);
+      console.error('Payment error:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <>
-      <Navigation />
-      <div className="max-w-2xl mx-auto p-6">
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold text-gray-800">Currency Converter</h2>
-            <RefreshCw className="w-5 h-5 text-gray-500 hover:text-blue-500 cursor-pointer transition-colors" />
+    <div className="bg-gray-800/50 backdrop-blur-lg rounded-xl p-6">
+      <h2 className="text-xl font-semibold text-white mb-6">Currency Converter</h2>
+      
+      <div className="space-y-6">
+        <div>
+          <label className="block text-gray-300 mb-2">Amount</label>
+          <input
+            type="number"
+            value={amount}
+            onChange={handleAmountChange}
+            className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-4 py-2 text-white"
+            placeholder="Enter amount"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-gray-300 mb-2">From</label>
+            <select
+              value={fromCurrency}
+              onChange={(e) => setFromCurrency(e.target.value)}
+              className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-4 py-2 text-white"
+            >
+              {currencies.map((currency) => (
+                <option key={currency.code} value={currency.code}>
+                  {currency.code} - {currency.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="space-y-6">
-            {/* Amount Input */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter amount"
-              />
-            </div>
-
-            {/* Currency Selection */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">From</label>
-                <select
-                  value={fromCurrency}
-                  onChange={(e) => setFromCurrency(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                >
-                  {currencies.map((currency) => (
-                    <option key={currency.code} value={currency.code}>
-                      {currency.icon} {currency.code} - {currency.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Swap Button */}
-              <div className="flex items-center justify-center md:justify-start">
-                <button
-                  onClick={handleSwapCurrencies}
-                  className="p-2 rounded-full hover:bg-gray-100 transition-colors mt-6"
-                >
-                  <ArrowLeftRight className="w-6 h-6 text-blue-500" />
-                </button>
-              </div>
-
-              <div className="md:-mt-8">
-                <label className="block text-sm font-medium text-gray-700 mb-2">To</label>
-                <select
-                  value={toCurrency}
-                  onChange={(e) => setToCurrency(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                >
-                  {currencies.map((currency) => (
-                    <option key={currency.code} value={currency.code}>
-                      {currency.icon} {currency.code} - {currency.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Convert Button */}
-            <button
-              onClick={handleConvert}
-              className="w-full bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600 transition-colors font-medium"
+          <div>
+            <label className="block text-gray-300 mb-2">To</label>
+            <select
+              value={toCurrency}
+              onChange={(e) => setToCurrency(e.target.value)}
+              className="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-4 py-2 text-white"
             >
-              Convert
-            </button>
-
-            {/* Result */}
-            {result && (
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Converted Amount</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {currencies.find(c => c.code === toCurrency)?.symbol}{result}
-                    </p>
-                  </div>
-                  <div className="flex items-center text-green-500">
-                    <TrendingUp className="w-5 h-5 mr-1" />
-                    <span className="text-sm font-medium">Live Rate</span>
-                  </div>
-                </div>
-              </div>
-            )}
+              {currencies.map((currency) => (
+                <option key={currency.code} value={currency.code}>
+                  {currency.code} - {currency.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-      </div>
-    </>
-  );
-};
 
-export default CurrencyConverter;
+        {/* Result */}
+        {isLoading ? (
+          <div className="text-center text-gray-400">Loading exchange rate...</div>
+        ) : (
+          exchangeRate && amount && (
+            <div className="bg-gray-700/30 rounded-lg p-4">
+              <div className="text-gray-300 mb-2">
+                Exchange Rate: 1 {fromCurrency} = {exchangeRate} {toCurrency}
+              </div>
+              <div className="text-2xl font-semibold text-white">
+                {amount} {fromCurrency} = {convertedAmount} {toCurrency}
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      {error && (
+        <div className="text-red-400 mt-4 text-sm">
+          {error}
+        </div>
+      )}
+
+      <button
+        onClick={handlePayment}
+        disabled={!convertedAmount || isLoading}
+        className={`
+          mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-medium
+          hover:bg-blue-700 transition-colors duration-200
+          ${(!convertedAmount || isLoading) ? 'opacity-50 cursor-not-allowed' : ''}
+        `}
+      >
+        {isLoading ? 'Processing...' : 'Proceed to Payment'}
+      </button>
+    </div>
+  );
+}

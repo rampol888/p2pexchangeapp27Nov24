@@ -1,236 +1,145 @@
-import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, ArrowDown } from 'lucide-react';
-import { fetchCurrencyRates } from '../utils/currencyApi';
+import React, { useState } from 'react';
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { X, RefreshCw } from 'lucide-react';
 
-const currencyIcons = {
-  USD: {
-    color: '#85bb65',
-    symbol: '$',
-    icon: (
-      <div className="w-8 h-8 rounded-full bg-[#85bb65]/20 flex items-center justify-center">
-        <span className="text-[#85bb65] font-bold">$</span>
-      </div>
-    )
-  },
-  EUR: {
-    color: '#0052b4',
-    symbol: '€',
-    icon: (
-      <div className="w-8 h-8 rounded-full bg-[#0052b4]/20 flex items-center justify-center">
-        <span className="text-[#0052b4] font-bold">€</span>
-      </div>
-    )
-  },
-  GBP: {
-    color: '#003087',
-    symbol: '£',
-    icon: (
-      <div className="w-8 h-8 rounded-full bg-[#003087]/20 flex items-center justify-center">
-        <span className="text-[#003087] font-bold">£</span>
-      </div>
-    )
-  },
-  SGD: {
-    color: '#ef3340',
-    symbol: 'S$',
-    icon: (
-      <div className="w-8 h-8 rounded-full bg-[#ef3340]/20 flex items-center justify-center">
-        <span className="text-[#ef3340] font-bold">S$</span>
-      </div>
-    )
-  },
-  JPY: {
-    color: '#bc002d',
-    symbol: '¥',
-    icon: (
-      <div className="w-8 h-8 rounded-full bg-[#bc002d]/20 flex items-center justify-center">
-        <span className="text-[#bc002d] font-bold">¥</span>
-      </div>
-    )
-  },
-  CAD: {
-    color: '#ff0000',
-    symbol: 'C$',
-    icon: (
-      <div className="w-8 h-8 rounded-full bg-[#ff0000]/20 flex items-center justify-center">
-        <span className="text-[#ff0000] font-bold">C$</span>
-      </div>
-    )
-  }
-};
+// Separate PaymentForm component
+const PaymentForm = ({ amount, onClose }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [error, setError] = useState(null);
+  const [processing, setProcessing] = useState(false);
 
-const CurrencyOption = ({ currency }) => (
-  <div className="flex items-center space-x-2">
-    {currencyIcons[currency.code].icon}
-    <span>{currency.code}</span>
-  </div>
-);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!stripe || !elements) {
+      console.log('Stripe not loaded');
+      return;
+    }
 
-export const ExchangeModal = ({ isOpen, onClose }) => {
-  const [fromCurrency, setFromCurrency] = useState('USD');
-  const [toCurrency, setToCurrency] = useState('EUR');
-  const [amount, setAmount] = useState('');
-  const [rates, setRates] = useState(null);
-  const [loading, setLoading] = useState(true);
+    try {
+      setProcessing(true);
+      setError(null);
 
-  const currencies = [
-    { code: 'USD', name: 'US Dollar', symbol: '$' },
-    { code: 'EUR', name: 'Euro', symbol: '€' },
-    { code: 'GBP', name: 'British Pound', symbol: '£' },
-    { code: 'SGD', name: 'Singapore Dollar', symbol: 'S$' },
-    { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
-    { code: 'CAD', name: 'Canadian Dollar', symbol: 'C$' },
-  ];
+      // Log the amount being sent
+      console.log('Sending amount:', Math.round(amount * 100));
 
-  useEffect(() => {
-    const getRates = async () => {
-      setLoading(true);
-      const newRates = await fetchCurrencyRates(fromCurrency);
-      if (newRates) {
-        setRates(newRates);
+      // Create payment intent
+      const response = await fetch('http://localhost:3000/api/create-payment-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount: Math.round(amount * 100), // Convert to cents
+          currency: 'usd',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Network response was not ok');
       }
-      setLoading(false);
-    };
 
-    getRates();
-    const interval = setInterval(getRates, 30000); // Update every 30 seconds
-    return () => clearInterval(interval);
-  }, [fromCurrency]);
+      const { clientSecret } = await response.json();
 
-  const calculateExchangeAmount = () => {
-    if (!rates || !amount) return '';
-    const rate = rates[toCurrency];
-    return (parseFloat(amount) * rate).toFixed(2);
+      const { error: paymentError, paymentIntent } = await stripe.confirmCardPayment(
+        clientSecret,
+        {
+          payment_method: {
+            card: elements.getElement(CardElement),
+            billing_details: {
+              name: 'Test User', // Add actual user name here
+            },
+          },
+        }
+      );
+
+      if (paymentError) {
+        setError(paymentError.message);
+      } else if (paymentIntent.status === 'succeeded') {
+        console.log('Payment successful:', paymentIntent);
+        onClose();
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError(err.message || 'An error occurred during payment');
+    } finally {
+      setProcessing(false);
+    }
   };
 
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">
+          Card Details
+        </label>
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': {
+                  color: '#aab7c4',
+                },
+              },
+              invalid: {
+                color: '#9e2146',
+              },
+            },
+          }}
+          className="p-3 border rounded-md"
+        />
+      </div>
+
+      {error && (
+        <div className="text-red-500 text-sm bg-red-50 p-2 rounded">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={!stripe || processing}
+        className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700
+          disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {processing ? (
+          <div className="flex items-center justify-center space-x-2">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Processing...</span>
+          </div>
+        ) : (
+          `Pay $${amount}`
+        )}
+      </button>
+    </form>
+  );
+};
+
+// Main ExchangeModal component
+const ExchangeModal = ({ isOpen, onClose, amount }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl w-full max-w-md p-6 relative">
+      <div className="bg-white rounded-lg w-full max-w-md p-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
         >
           <X className="h-6 w-6" />
         </button>
 
-        <div className="space-y-6">
-          <div className="text-center">
-            <h3 className="text-xl font-bold text-gray-900">Currency Exchange</h3>
-            <p className="text-sm text-gray-500">Get real-time exchange rates</p>
-          </div>
-
-          {/* From Currency */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              From
-            </label>
-            <div className="flex space-x-4">
-              <div className="flex-1 relative">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full pl-12 pr-4 py-2 rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Enter amount"
-                />
-                <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                  {currencyIcons[fromCurrency].icon}
-                </div>
-              </div>
-              <select
-                value={fromCurrency}
-                onChange={(e) => setFromCurrency(e.target.value)}
-                className="rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500 pl-10"
-              >
-                {currencies.map((currency) => (
-                  <option key={currency.code} value={currency.code}>
-                    {currency.code}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Arrow Indicator with Animation */}
-          <div className="flex justify-center">
-            <div className="bg-gray-100 rounded-full p-2 hover:bg-gray-200 transition-colors cursor-pointer"
-                 onClick={() => {
-                   setFromCurrency(toCurrency);
-                   setToCurrency(fromCurrency);
-                 }}>
-              <ArrowDown className="h-6 w-6 text-gray-500" />
-            </div>
-          </div>
-
-          {/* To Currency */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              To
-            </label>
-            <div className="flex space-x-4">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={calculateExchangeAmount()}
-                  readOnly
-                  className="w-full pl-12 pr-4 py-2 rounded-lg border-gray-300 bg-gray-50"
-                  placeholder={loading ? "Loading..." : "0.00"}
-                />
-                <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                  {currencyIcons[toCurrency].icon}
-                </div>
-              </div>
-              <select
-                value={toCurrency}
-                onChange={(e) => setToCurrency(e.target.value)}
-                className="rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500 pl-10"
-              >
-                {currencies.map((currency) => (
-                  <option key={currency.code} value={currency.code}>
-                    {currency.code}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Exchange Rate Display */}
-          {rates && (
-            <div className="flex items-center justify-between text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-              <span>Exchange Rate:</span>
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1">
-                  {currencyIcons[fromCurrency].icon}
-                  <span>1 {fromCurrency} = </span>
-                  {currencyIcons[toCurrency].icon}
-                  <span>{rates[toCurrency]?.toFixed(4)} {toCurrency}</span>
-                </div>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              </div>
-            </div>
-          )}
-
-          {/* Exchange Button */}
-          <button
-            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium
-              hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-              disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed
-              transition-all duration-200 transform hover:scale-[1.02]"
-            disabled={loading || !amount}
-          >
-            {loading ? (
-              <div className="flex items-center justify-center space-x-2">
-                <RefreshCw className="h-5 w-5 animate-spin" />
-                <span>Loading...</span>
-              </div>
-            ) : (
-              'Exchange Now'
-            )}
-          </button>
-        </div>
+        <h2 className="text-xl font-bold mb-4">Complete Payment</h2>
+        
+        <PaymentForm amount={amount} onClose={onClose} />
       </div>
     </div>
   );
 };
+
+export default ExchangeModal;

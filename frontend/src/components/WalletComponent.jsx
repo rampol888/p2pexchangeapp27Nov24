@@ -1,12 +1,132 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/Card.jsx';
-import { Button } from './ui/button.jsx';
-import { Input } from './ui/input.jsx';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Wallet, Send, ArrowRight, History, RefreshCw, Plus, CreditCard, Building2, Wallet2 } from 'lucide-react';
-import { Alert, AlertDescription } from './ui/alert.jsx';
-import { Navigation } from './Navigation';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-const WalletComponent = () => {
+// Initialize Stripe
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+
+// Create a new component for the payment form
+const PaymentForm = ({ amount, onSuccess, onCancel, isProcessing, setIsProcessing }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    setIsProcessing(true);
+
+    try {
+      // Update the endpoint to match backend route
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/payment/create-payment-intent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          amount: amount,
+          fromCurrency: 'USD', // Using USD as default
+          toCurrency: 'USD'    // Using USD as default
+        }),
+      });
+
+      const { clientSecret } = await response.json();
+
+      // Confirm payment
+      const result = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: elements.getElement(CardElement),
+        },
+      });
+
+      if (result.error) {
+        setError(result.error.message);
+      } else {
+        // Verify payment status
+        const verifyResponse = await fetch(
+          `${import.meta.env.VITE_API_URL}/api/payment/verify-payment/${result.paymentIntent.id}`
+        );
+        const verifyResult = await verifyResponse.json();
+        
+        if (verifyResult.status === 'succeeded') {
+          onSuccess();
+        } else {
+          setError('Payment verification failed');
+        }
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError('Payment failed. Please try again.');
+    } finally {
+      setLoading(false);
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="p-4 border rounded-lg bg-white">
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': {
+                  color: '#aab7c4',
+                },
+              },
+              invalid: {
+                color: '#9e2146',
+              },
+            },
+          }}
+        />
+      </div>
+      
+      {error && (
+        <div className="text-red-500 text-sm">{error}</div>
+      )}
+      
+      <div className="flex gap-2">
+        <Button 
+          type="button"
+          className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700"
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button 
+          type="submit"
+          disabled={!stripe || isProcessing || !amount}
+          className={`flex-1 ${
+            isProcessing 
+              ? 'bg-gray-400' 
+              : 'bg-blue-600 hover:bg-blue-700'
+          } text-white`}
+        >
+          {isProcessing ? (
+            <div className="flex items-center gap-2">
+              <span className="animate-spin">⚪</span>
+              Processing...
+            </div>
+          ) : (
+            'Pay'
+          )}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+export const WalletComponent = () => {
   const [balance, setBalance] = useState(1000);
   const [amount, setAmount] = useState('');
   const [showSend, setShowSend] = useState(false);
@@ -40,6 +160,8 @@ const WalletComponent = () => {
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [addAmount, setAddAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
 
   const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD'];
 
@@ -74,7 +196,11 @@ const WalletComponent = () => {
     }
   };
 
-  const handleAddMoney = () => {
+  const handleAddMoney = async () => {
+    if (paymentMethod === 'card') {
+      // Payment will be handled by Stripe
+      return;
+    }
     if (addAmount && !isNaN(addAmount) && Number(addAmount) > 0) {
       setBalance(prev => prev + Number(addAmount));
       
@@ -111,6 +237,39 @@ const WalletComponent = () => {
     { id: 'bank', name: 'Bank Transfer', icon: <Building2 className="w-5 h-5" /> },
     { id: 'upi', name: 'UPI', icon: <Wallet2 className="w-5 h-5" /> },
   ];
+
+  const handlePaymentSuccess = () => {
+    try {
+      setBalance(prev => prev + Number(addAmount));
+      
+      const newTransaction = {
+        id: Date.now(),
+        type: 'deposit',
+        amount: Number(addAmount),
+        fromCurrency,
+        toCurrency: fromCurrency,
+        recipient: 'Wallet',
+        date: new Date().toISOString().split('T')[0],
+        status: 'completed',
+        method: 'card'
+      };
+      
+      setRecentTransactions(prev => [newTransaction, ...prev]);
+      setNotification(`Successfully added ${formatCurrency(Number(addAmount), fromCurrency)} to your wallet`);
+      
+      // Reset states
+      setAddAmount('');
+      setShowAddMoney(false);
+      setPaymentMethod('');
+      setPaymentError(null);
+      setIsProcessing(false);
+      
+      setTimeout(() => setNotification(''), 3000);
+    } catch (error) {
+      console.error('Success handler error:', error);
+      setPaymentError('Error updating wallet. Please contact support.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-4 sm:p-6 lg:p-8">
@@ -152,41 +311,48 @@ const WalletComponent = () => {
                       className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                     />
 
-                    <div className="space-y-2">
-                      <label className="text-sm text-gray-600">Select Payment Method</label>
-                      <div className="grid grid-cols-1 gap-2">
-                        {paymentMethods.map((method) => (
-                          <button
-                            key={method.id}
-                            onClick={() => setPaymentMethod(method.id)}
-                            className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                              paymentMethod === method.id 
-                                ? 'bg-blue-50 border-2 border-blue-500 text-blue-700' 
-                                : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'
-                            }`}
-                          >
-                            <div className="text-blue-500">{method.icon}</div>
-                            <span>{method.name}</span>
-                          </button>
-                        ))}
+                    {paymentMethod === 'card' && addAmount ? (
+                      <div className="space-y-4">
+                        {paymentError && (
+                          <Alert variant="destructive">
+                            <AlertDescription>{paymentError}</AlertDescription>
+                          </Alert>
+                        )}
+                        
+                        <Elements stripe={stripePromise}>
+                          <PaymentForm 
+                            amount={Number(addAmount)}
+                            onSuccess={handlePaymentSuccess}
+                            onCancel={() => {
+                              setPaymentMethod('');
+                              setPaymentError(null);
+                            }}
+                            isProcessing={isProcessing}
+                            setIsProcessing={setIsProcessing}
+                          />
+                        </Elements>
                       </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button 
-                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700"
-                        onClick={() => setShowAddMoney(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button 
-                        className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
-                        onClick={handleAddMoney}
-                        disabled={!addAmount || !paymentMethod}
-                      >
-                        Proceed to Pay
-                      </Button>
-                    </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="text-sm text-gray-600">Select Payment Method</label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {paymentMethods.map((method) => (
+                            <button
+                              key={method.id}
+                              onClick={() => setPaymentMethod(method.id)}
+                              className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
+                                paymentMethod === method.id 
+                                  ? 'bg-blue-50 border-2 border-blue-500 text-blue-700' 
+                                  : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'
+                              }`}
+                            >
+                              <div className="text-blue-500">{method.icon}</div>
+                              <span>{method.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

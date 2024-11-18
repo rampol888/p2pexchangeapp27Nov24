@@ -1,58 +1,35 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-  server: {
-    port: 80,
-    host: '0.0.0.0',
-    strictPort: true,
-    // Handle health check endpoint for AWS
-    middleware: [
-      (req, res, next) => {
-        if (req.url === '/health') {
-          res.statusCode = 200;
-          res.end('OK');
-          return;
-        }
-        next();
-      }
-    ]
-  },
-  preview: {
-    port: 80,
-    host: '0.0.0.0'
-  },
-  build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
-    sourcemap: false,
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true
+export default defineConfig(({ mode }) => {
+  // Load env file based on `mode` in the current working directory.
+  const env = loadEnv(mode, process.cwd(), '');
+  
+  return {
+    plugins: [react()],
+    server: {
+      port: 5173,
+      open: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
       }
     },
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom']
-        }
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src')
       }
+    },
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-router-dom', '@stripe/stripe-js', 'axios']
+    },
+    // Make env variables available
+    define: {
+      'process.env': env
     }
-  },
-  optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'react-router-dom'
-    ]
-  }
+  };
 });
