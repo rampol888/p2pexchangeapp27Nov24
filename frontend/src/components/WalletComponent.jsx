@@ -1,191 +1,101 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Wallet, Send, ArrowRight, History, RefreshCw, Plus, CreditCard, Building2, Wallet2 } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Wallet, Send, Plus, History } from 'lucide-react';
 
-// Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+export const WalletComponent = () => {
+  // State for multiple currency balances
+  const [balances, setBalances] = useState({
+    USD: 0,
+    EUR: 0,
+    SGD: 0,
+    AUD: 0,
+    JPY: 0
+  });
 
-// Create a new component for the payment form
-const PaymentForm = ({ amount, onSuccess, onCancel, isProcessing, setIsProcessing }) => {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [selectedCurrency, setSelectedCurrency] = useState('USD');
+  const [showAddMoney, setShowAddMoney] = useState(false);
+  const [showSend, setShowSend] = useState(false);
+  const [addAmount, setAddAmount] = useState('');
+  const [sendAmount, setSendAmount] = useState('');
+  const [recipient, setRecipient] = useState('');
+  const [notification, setNotification] = useState('');
+  const [recentTransactions, setRecentTransactions] = useState([]);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    setIsProcessing(true);
+  // Currency configuration with symbols and exchange rates
+  const currencyConfig = {
+    USD: { symbol: '$', rate: 1, icon: '🇺🇸' },
+    EUR: { symbol: '€', rate: 0.85, icon: '🇪🇺' },
+    SGD: { symbol: 'S$', rate: 1.34, icon: '🇸🇬' },
+    AUD: { symbol: 'A$', rate: 1.52, icon: '🇦🇺' },
+    JPY: { symbol: '¥', rate: 110.42, icon: '🇯🇵' }
+  };
 
+  // Format currency with proper symbol and decimals
+  const formatCurrency = (amount, currencyCode) => {
+    if (!currencyCode) currencyCode = 'USD';
+    
     try {
-      // Update the endpoint to match backend route
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/payment/create-payment-intent`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          amount: amount,
-          fromCurrency: 'USD', // Using USD as default
-          toCurrency: 'USD'    // Using USD as default
-        }),
-      });
-
-      const { clientSecret } = await response.json();
-
-      // Confirm payment
-      const result = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: elements.getElement(CardElement),
-        },
-      });
-
-      if (result.error) {
-        setError(result.error.message);
-      } else {
-        // Verify payment status
-        const verifyResponse = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/payment/verify-payment/${result.paymentIntent.id}`
-        );
-        const verifyResult = await verifyResponse.json();
-        
-        if (verifyResult.status === 'succeeded') {
-          onSuccess();
-        } else {
-          setError('Payment verification failed');
-        }
-      }
-    } catch (err) {
-      console.error('Payment error:', err);
-      setError('Payment failed. Please try again.');
-    } finally {
-      setLoading(false);
-      setIsProcessing(false);
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currencyCode,
+        minimumFractionDigits: currencyCode === 'JPY' ? 0 : 2,
+        maximumFractionDigits: currencyCode === 'JPY' ? 0 : 2,
+      }).format(amount || 0);
+    } catch (error) {
+      console.error('Currency formatting error:', error);
+      return `${currencyConfig[currencyCode].symbol}${amount || 0}`;
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="p-4 border rounded-lg bg-white">
-        <CardElement
-          options={{
-            style: {
-              base: {
-                fontSize: '16px',
-                color: '#424770',
-                '::placeholder': {
-                  color: '#aab7c4',
-                },
-              },
-              invalid: {
-                color: '#9e2146',
-              },
-            },
-          }}
-        />
-      </div>
-      
-      {error && (
-        <div className="text-red-500 text-sm">{error}</div>
-      )}
-      
-      <div className="flex gap-2">
-        <Button 
-          type="button"
-          className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700"
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
-        <Button 
-          type="submit"
-          disabled={!stripe || isProcessing || !amount}
-          className={`flex-1 ${
-            isProcessing 
-              ? 'bg-gray-400' 
-              : 'bg-blue-600 hover:bg-blue-700'
-          } text-white`}
-        >
-          {isProcessing ? (
-            <div className="flex items-center gap-2">
-              <span className="animate-spin">⚪</span>
-              Processing...
-            </div>
-          ) : (
-            'Pay'
-          )}
-        </Button>
-      </div>
-    </form>
-  );
-};
+  // Handle adding money to wallet
+  const handleAddMoney = () => {
+    if (addAmount && !isNaN(addAmount) && Number(addAmount) > 0) {
+      setBalances(prev => ({
+        ...prev,
+        [selectedCurrency]: prev[selectedCurrency] + Number(addAmount)
+      }));
 
-export const WalletComponent = () => {
-  const [balance, setBalance] = useState(1000);
-  const [amount, setAmount] = useState('');
-  const [showSend, setShowSend] = useState(false);
-  const [recipient, setRecipient] = useState('');
-  const [notification, setNotification] = useState('');
-  const [fromCurrency, setFromCurrency] = useState('USD');
-  const [toCurrency, setToCurrency] = useState('EUR');
-  const [exchangeRate, setExchangeRate] = useState(0.85); // Example rate
-  const [recentTransactions, setRecentTransactions] = useState([
-    {
-      id: 1,
-      type: 'send',
-      amount: 100,
-      fromCurrency: 'USD',
-      toCurrency: 'EUR',
-      recipient: 'John Doe',
-      date: '2024-02-20',
-      status: 'completed'
-    },
-    {
-      id: 2,
-      type: 'send',
-      amount: 50,
-      fromCurrency: 'USD',
-      toCurrency: 'GBP',
-      recipient: 'Jane Smith',
-      date: '2024-02-19',
-      status: 'completed'
+      const newTransaction = {
+        id: Date.now(),
+        type: 'deposit',
+        amount: Number(addAmount),
+        currency: selectedCurrency,
+        date: new Date().toLocaleDateString(),
+        recipient: 'Wallet'
+      };
+
+      setRecentTransactions(prev => [newTransaction, ...prev]);
+      setNotification(`Successfully added ${formatCurrency(Number(addAmount), selectedCurrency)}`);
+      setAddAmount('');
+      setShowAddMoney(false);
+      setTimeout(() => setNotification(''), 3000);
     }
-  ]);
-  const [showAddMoney, setShowAddMoney] = useState(false);
-  const [addAmount, setAddAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentError, setPaymentError] = useState(null);
+  };
 
-  const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD'];
-
+  // Handle sending money
   const handleSendMoney = () => {
-    if (amount && !isNaN(amount) && Number(amount) > 0 && recipient) {
-      if (Number(amount) <= balance) {
-        const convertedAmount = Number(amount) * exchangeRate;
-        setBalance(prev => prev - Number(amount));
-        
-        // Add to recent transactions
+    if (sendAmount && recipient && !isNaN(sendAmount) && Number(sendAmount) > 0) {
+      if (Number(sendAmount) <= balances[selectedCurrency]) {
+        setBalances(prev => ({
+          ...prev,
+          [selectedCurrency]: prev[selectedCurrency] - Number(sendAmount)
+        }));
+
         const newTransaction = {
           id: Date.now(),
           type: 'send',
-          amount: Number(amount),
-          fromCurrency,
-          toCurrency,
-          recipient,
-          date: new Date().toISOString().split('T')[0],
-          status: 'completed'
+          amount: Number(sendAmount),
+          currency: selectedCurrency,
+          date: new Date().toLocaleDateString(),
+          recipient: recipient
         };
-        
+
         setRecentTransactions(prev => [newTransaction, ...prev]);
-        setNotification(`Successfully sent ${amount} ${fromCurrency} (${convertedAmount.toFixed(2)} ${toCurrency}) to ${recipient}`);
-        setAmount('');
+        setNotification(`Successfully sent ${formatCurrency(Number(sendAmount), selectedCurrency)} to ${recipient}`);
+        setSendAmount('');
         setRecipient('');
         setShowSend(false);
         setTimeout(() => setNotification(''), 3000);
@@ -196,261 +106,169 @@ export const WalletComponent = () => {
     }
   };
 
-  const handleAddMoney = async () => {
-    if (paymentMethod === 'card') {
-      // Payment will be handled by Stripe
-      return;
-    }
-    if (addAmount && !isNaN(addAmount) && Number(addAmount) > 0) {
-      setBalance(prev => prev + Number(addAmount));
-      
-      // Add to recent transactions
-      const newTransaction = {
-        id: Date.now(),
-        type: 'deposit',
-        amount: Number(addAmount),
-        fromCurrency,
-        toCurrency: fromCurrency,
-        recipient: 'Wallet',
-        date: new Date().toISOString().split('T')[0],
-        status: 'completed'
-      };
-      
-      setRecentTransactions(prev => [newTransaction, ...prev]);
-      setNotification(`Successfully added ${formatCurrency(Number(addAmount), fromCurrency)} to your wallet`);
-      setAddAmount('');
-      setShowAddMoney(false);
-      setPaymentMethod('');
-      setTimeout(() => setNotification(''), 3000);
-    }
-  };
-
-  const formatCurrency = (amount, currency) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency
-    }).format(amount);
-  };
-
-  const paymentMethods = [
-    { id: 'card', name: 'Credit/Debit Card', icon: <CreditCard className="w-5 h-5" /> },
-    { id: 'bank', name: 'Bank Transfer', icon: <Building2 className="w-5 h-5" /> },
-    { id: 'upi', name: 'UPI', icon: <Wallet2 className="w-5 h-5" /> },
-  ];
-
-  const handlePaymentSuccess = () => {
-    try {
-      setBalance(prev => prev + Number(addAmount));
-      
-      const newTransaction = {
-        id: Date.now(),
-        type: 'deposit',
-        amount: Number(addAmount),
-        fromCurrency,
-        toCurrency: fromCurrency,
-        recipient: 'Wallet',
-        date: new Date().toISOString().split('T')[0],
-        status: 'completed',
-        method: 'card'
-      };
-      
-      setRecentTransactions(prev => [newTransaction, ...prev]);
-      setNotification(`Successfully added ${formatCurrency(Number(addAmount), fromCurrency)} to your wallet`);
-      
-      // Reset states
-      setAddAmount('');
-      setShowAddMoney(false);
-      setPaymentMethod('');
-      setPaymentError(null);
-      setIsProcessing(false);
-      
-      setTimeout(() => setNotification(''), 3000);
-    } catch (error) {
-      console.error('Success handler error:', error);
-      setPaymentError('Error updating wallet. Please contact support.');
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-4xl mx-auto">
-        <Card className="bg-white shadow-sm border border-gray-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-gray-900">
-              <Wallet className="h-6 w-6 text-blue-500" />
-              Your Wallet
+        <Card className="bg-white/80 backdrop-blur-sm shadow-xl border-0 rounded-2xl">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-3 text-2xl">
+                <div className="p-2 bg-wallet-500 rounded-lg">
+                  <Wallet className="h-6 w-6 text-white" />
+                </div>
+                Digital Wallet
+              </div>
+              <div className="flex gap-2">
+                {Object.entries(currencyConfig).map(([code, { icon }]) => (
+                  <button
+                    key={code}
+                    onClick={() => setSelectedCurrency(code)}
+                    className={`p-2 rounded-lg transition-all ${
+                      selectedCurrency === code
+                        ? 'bg-wallet-500 text-white'
+                        : 'bg-wallet-50 hover:bg-wallet-100'
+                    }`}
+                  >
+                    <span className="text-lg">{icon}</span>
+                  </button>
+                ))}
+              </div>
             </CardTitle>
           </CardHeader>
+
           <CardContent>
-            <div className="text-center mb-6">
-              <p className="text-sm text-gray-600">Available Balance</p>
-              <h2 className="text-4xl font-bold my-2 text-gray-900">
-                {formatCurrency(balance, fromCurrency)}
-              </h2>
+            {/* Balance Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              {Object.entries(balances).map(([currency, amount]) => (
+                <div
+                  key={currency}
+                  className={`p-4 rounded-xl transition-all ${
+                    selectedCurrency === currency
+                      ? 'bg-gradient-to-r from-wallet-500 to-purple-600 text-white'
+                      : 'bg-white/50 border border-gray-200 hover:border-wallet-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={selectedCurrency === currency ? 'text-white/80' : 'text-gray-500'}>
+                      {currencyConfig[currency].icon} {currency}
+                    </span>
+                    {currency !== 'USD' && (
+                      <span className="text-xs opacity-70">
+                        ≈ {formatCurrency(amount * currencyConfig[currency].rate, 'USD')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-2xl font-bold">
+                    {formatCurrency(amount, currency)}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div className="space-y-4">
+            {/* Action Buttons */}
+            <div className="flex gap-3 mb-6">
               <Button 
-                variant="secondary" 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                className="flex-1 bg-wallet-500 hover:bg-wallet-600 text-white"
                 onClick={() => setShowAddMoney(!showAddMoney)}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Money
               </Button>
-
-              {showAddMoney && (
-                <div className="space-y-4 mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Money to Wallet</h3>
-                  <div className="space-y-4">
-                    <Input
-                      type="number"
-                      placeholder="Enter amount"
-                      value={addAmount}
-                      onChange={(e) => setAddAmount(e.target.value)}
-                      className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
-                    />
-
-                    {paymentMethod === 'card' && addAmount ? (
-                      <div className="space-y-4">
-                        {paymentError && (
-                          <Alert variant="destructive">
-                            <AlertDescription>{paymentError}</AlertDescription>
-                          </Alert>
-                        )}
-                        
-                        <Elements stripe={stripePromise}>
-                          <PaymentForm 
-                            amount={Number(addAmount)}
-                            onSuccess={handlePaymentSuccess}
-                            onCancel={() => {
-                              setPaymentMethod('');
-                              setPaymentError(null);
-                            }}
-                            isProcessing={isProcessing}
-                            setIsProcessing={setIsProcessing}
-                          />
-                        </Elements>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <label className="text-sm text-gray-600">Select Payment Method</label>
-                        <div className="grid grid-cols-1 gap-2">
-                          {paymentMethods.map((method) => (
-                            <button
-                              key={method.id}
-                              onClick={() => setPaymentMethod(method.id)}
-                              className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                                paymentMethod === method.id 
-                                  ? 'bg-blue-50 border-2 border-blue-500 text-blue-700' 
-                                  : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'
-                              }`}
-                            >
-                              <div className="text-blue-500">{method.icon}</div>
-                              <span>{method.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
               <Button 
-                variant="secondary" 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
                 onClick={() => setShowSend(!showSend)}
               >
                 <Send className="w-4 h-4 mr-2" />
-                Send Money at Great Rates
+                Send Money
               </Button>
+            </div>
 
-              {showSend && (
-                <div className="space-y-4 mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+            {/* Add Money Form */}
+            {showAddMoney && (
+              <div className="space-y-4 mb-6 bg-gray-50/50 backdrop-blur-sm p-6 rounded-xl border border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Add Money</h3>
+                <div className="space-y-4">
                   <Input
-                    placeholder="Recipient name or email"
+                    type="number"
+                    placeholder={`Enter amount in ${selectedCurrency}`}
+                    value={addAmount}
+                    onChange={(e) => setAddAmount(e.target.value)}
+                  />
+                  <Button onClick={handleAddMoney} className="w-full">
+                    Add Money
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Send Money Form */}
+            {showSend && (
+              <div className="space-y-4 mb-6 bg-gray-50/50 backdrop-blur-sm p-6 rounded-xl border border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Send Money</h3>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="Recipient"
                     value={recipient}
                     onChange={(e) => setRecipient(e.target.value)}
-                    className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                   />
-                  
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <Input
-                        type="number"
-                        placeholder="Amount"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        className="bg-white border-gray-300 text-gray-900"
-                      />
-                    </div>
-                    <select 
-                      value={fromCurrency}
-                      onChange={(e) => setFromCurrency(e.target.value)}
-                      className="bg-white border-gray-300 text-gray-900 p-2 rounded"
-                    >
-                      {currencies.map(currency => (
-                        <option key={currency} value={currency}>{currency}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex items-center justify-between text-sm text-gray-600">
-                    <span>Exchange Rate:</span>
-                    <div className="flex items-center gap-1">
-                      <span>1 {fromCurrency} = {exchangeRate} {toCurrency}</span>
-                      <RefreshCw className="w-3 h-3 cursor-pointer text-blue-500" />
-                    </div>
-                  </div>
-
-                  <Button 
-                    className="w-full bg-blue-600 text-white hover:bg-blue-700"
-                    onClick={handleSendMoney}
-                  >
+                  <Input
+                    type="number"
+                    placeholder={`Enter amount in ${selectedCurrency}`}
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(e.target.value)}
+                  />
+                  <Button onClick={handleSendMoney} className="w-full">
                     Send Money
                   </Button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
+            {/* Notification */}
             {notification && (
-              <Alert className="mt-4 bg-blue-50 border-blue-200 text-blue-700">
-                <AlertDescription>
-                  {notification}
-                </AlertDescription>
+              <Alert className="mb-6 bg-wallet-50 border-wallet-100">
+                <AlertDescription>{notification}</AlertDescription>
               </Alert>
             )}
 
+            {/* Recent Transactions */}
             <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <History className="w-4 h-4" />
-                  <span className="text-sm">Recent Transactions</span>
-                </div>
+              <div className="flex items-center gap-2 text-gray-700 font-semibold mb-4">
+                <History className="w-5 h-5 text-wallet-500" />
+                Recent Transactions
               </div>
               
               <div className="space-y-3">
                 {recentTransactions.map(transaction => (
-                  <div key={transaction.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{transaction.recipient}</p>
-                        <p className="text-xs text-gray-600">{transaction.date}</p>
+                  <div 
+                    key={transaction.id} 
+                    className="bg-white/50 hover:bg-gray-50/80 transition-colors rounded-xl p-4 border border-gray-100"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex gap-3 items-center">
+                        <div className={`p-2 rounded-full ${
+                          transaction.type === 'send' ? 'bg-orange-100' : 'bg-green-100'
+                        }`}>
+                          {transaction.type === 'send' ? 
+                            <Send className="w-4 h-4 text-orange-600" /> : 
+                            <Plus className="w-4 h-4 text-green-600" />
+                          }
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {transaction.recipient}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {transaction.date}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">
-                          {formatCurrency(transaction.amount, transaction.fromCurrency)}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          {formatCurrency(transaction.amount * exchangeRate, transaction.toCurrency)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-                        {transaction.status}
-                      </span>
+                      <p className={`font-medium ${
+                        transaction.type === 'send' ? 'text-orange-600' : 'text-green-600'
+                      }`}>
+                        {transaction.type === 'send' ? '-' : '+'}
+                        {formatCurrency(transaction.amount, transaction.currency)}
+                      </p>
                     </div>
                   </div>
                 ))}
