@@ -12,8 +12,13 @@ export function PaymentSuccess() {
 
   useEffect(() => {
     const verifyPayment = async () => {
+      if (!token) {
+        setError('Authentication required');
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        // Get payment_intent and payment_intent_client_secret from URL
         const params = new URLSearchParams(location.search);
         const paymentIntentId = params.get('payment_intent');
 
@@ -21,22 +26,27 @@ export function PaymentSuccess() {
           throw new Error('No payment intent ID found');
         }
 
-        // Verify payment with your backend
-        const response = await fetch(`/api/payment/verify-payment/${paymentIntentId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+        console.log('Verifying payment:', paymentIntentId);
+
+        const response = await fetch(
+          `http://localhost:3000/api/payment/verify-payment/${paymentIntentId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
           }
-        });
+        );
 
         if (!response.ok) {
-          throw new Error('Failed to verify payment');
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to verify payment');
         }
 
         const data = await response.json();
+        console.log('Transaction data:', data);
         setTransaction(data);
         
-        // Start redirect timer only after verification
         const timer = setTimeout(() => {
           navigate('/dashboard');
         }, 5000);

@@ -3,7 +3,6 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 
 export function Dashboard() {
   const location = useLocation();
-  const [isExchangeOpen, setIsExchangeOpen] = useState(false);
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard' },
@@ -19,11 +18,6 @@ export function Dashboard() {
         <div className="flex-1 flex">
           {/* Side Navigation */}
           <div className="bg-gray-800 w-64 p-6 space-y-4">
-            <div className="text-2xl font-bold text-white mb-8">
-              <span className="bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">
-                Pexioace
-              </span>
-            </div>
             <nav className="space-y-2">
               {navigation.map((item) => {
                 const isActive = location.pathname === item.href;
@@ -48,14 +42,6 @@ export function Dashboard() {
 
           {/* Content Area */}
           <div className="flex-1 p-8">
-            {/* Top Header */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold">
-                <span className="bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">
-                  Pexioace
-                </span>
-              </h1>
-            </div>
             <Outlet />
           </div>
         </div>

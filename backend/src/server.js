@@ -1,57 +1,101 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import paymentRoutes from './routes/payment.js';
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const Stripe = require('stripe');
 
 dotenv.config();
 
 const app = express();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Verify Stripe key is available
-if (!process.env.STRIPE_SECRET_KEY) {
-  console.error('STRIPE_SECRET_KEY is not set in environment variables');
-  process.exit(1);
-}
-
-// CORS configuration
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// Middleware
+app.use(cors());
 app.use(express.json());
 
-// Debug middleware
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`, req.body);
-  next();
+// Exchange payment intent
+app.post('/api/payment/create-payment-intent', async (req, res) => {
+  try {
+    const { amount, currency, metadata } = req.body;
+    
+    if (!amount || !currency) {
+      return res.status(400).json({
+        error: 'Missing required fields'
+      });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: parseInt(amount),
+      currency: currency.toLowerCase(),
+      payment_method_types: ['card'],
+      metadata: {
+        type: 'exchange',
+        ...metadata
+      }
+    });
+
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id
+    });
+
+  } catch (error) {
+    console.error('Payment intent error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Routes
-app.use('/api/payment', paymentRoutes);
+// Wallet funding payment intent
+app.post('/api/wallet/fund', async (req, res) => {
+  try {
+    const { amount, currency } = req.body;
+    
+    console.log('Wallet funding request:', { amount, currency });
 
-// Test route
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    if (!amount || !currency) {
+      return res.status(400).json({
+        error: 'Missing amount or currency'
+      });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(parseFloat(amount) * 100), // Convert to cents
+      currency: currency.toLowerCase(),
+      payment_method_types: ['card'],
+      metadata: {
+        type: 'wallet_funding'
+      }
+    });
+
+    res.json({
+      clientSecret: paymentIntent.client_secret
+    });
+
+  } catch (error) {
+    console.error('Wallet funding error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({ 
-    error: err.message || 'Something broke!',
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
+// Payment verification endpoint
+app.get('/api/payment/verify-payment/:paymentIntentId', async (req, res) => {
+  try {
+    const { paymentIntentId } = req.params;
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    
+    res.json({
+      status: paymentIntent.status,
+      amount: (paymentIntent.amount / 100).toFixed(2),
+      currency: paymentIntent.currency,
+      metadata: paymentIntent.metadata
+    });
+
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`CORS enabled for: http://localhost:5173`);
 });
-
-export default app;

@@ -82,43 +82,33 @@ router.get('/verify-payment/:paymentIntentId', async (req, res) => {
   try {
     const { paymentIntentId } = req.params;
     
-    if (!paymentIntentId) {
-      return res.status(400).json({ 
-        error: 'Missing payment ID',
-        details: 'Payment intent ID is required'
-      });
-    }
-
     console.log('Verifying payment:', paymentIntentId);
 
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     
-    console.log('Payment verification result:', {
-      id: paymentIntent.id,
-      status: paymentIntent.status
-    });
+    console.log('Payment intent retrieved:', paymentIntent);
 
-    res.json({
+    // Format the response
+    const response = {
       status: paymentIntent.status,
       amount: (paymentIntent.amount / 100).toFixed(2),
       currency: paymentIntent.currency,
-      metadata: paymentIntent.metadata,
-      created: paymentIntent.created,
-      id: paymentIntent.id
-    });
+      metadata: {
+        originalAmount: paymentIntent.metadata.originalAmount,
+        fromCurrency: paymentIntent.metadata.fromCurrency,
+        exchangeRate: paymentIntent.metadata.exchangeRate
+      }
+    };
 
-  } catch (error) {
-    console.error('Payment verification error:', error);
+    console.log('Sending response:', response);
     
-    if (error.type === 'StripeError') {
-      return res.status(400).json({
-        error: 'Payment processing error',
-        message: error.message,
-        code: error.code
-      });
-    }
-
-    res.status(500).json({ error: error.message });
+    res.json(response);
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

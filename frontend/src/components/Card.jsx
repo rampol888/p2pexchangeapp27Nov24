@@ -3,7 +3,7 @@ import { CreditCard, Globe, Shield, Wallet } from 'lucide-react';
 
 export function Card() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-8">
+    <div className="bg-gradient-to-br from-gray-50 to-blue-50 p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header Section */}
         <div className="mb-12 text-center">
@@ -25,7 +25,7 @@ export function Card() {
             <div className="relative h-full p-6 flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-white text-sm">P2P Exchange</p>
+                  <p className="text-white text-sm">PexioAce</p>
                   <div className="mt-1">
                     <Globe className="h-6 w-6 text-white" />
                   </div>

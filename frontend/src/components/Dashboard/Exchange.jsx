@@ -3,7 +3,6 @@ import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { PaymentForm } from './components/PaymentForm';
 
-// Replace with your actual publishable key
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 // Stripe-supported currencies
@@ -58,19 +57,16 @@ export function Exchange() {
   const [exchangeRate, setExchangeRate] = useState(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // Add validation for minimum amounts
   const validateAmount = (amount, currency) => {
     const minAmount = minAmounts[currency];
     return amount >= minAmount;
   };
 
-  // Function to fetch exchange rate and convert amount
   const handleConvert = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    // Validate minimum amount
     if (!validateAmount(Number(amount), fromCurrency)) {
       setError(`Minimum amount for ${fromCurrency} is ${currencies.find(c => c.code === fromCurrency)?.symbol}${minAmounts[fromCurrency]}`);
       setLoading(false);
@@ -101,27 +97,33 @@ export function Exchange() {
     }
   };
 
-  // Function to proceed to payment
   const handleProceedToPayment = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/payment/create-payment-intent`, {
+      const amountInCents = Math.round(Number(amount) * 100);
+      
+      const response = await fetch('http://localhost:3000/api/payment/create-payment-intent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount,
-          fromCurrency,
-          toCurrency,
-          convertedAmount
+          amount: amountInCents,
+          currency: fromCurrency.toLowerCase(),
+          metadata: {
+            fromAmount: amount,
+            fromCurrency,
+            toAmount: convertedAmount?.toFixed(2),
+            toCurrency,
+            exchangeRate: exchangeRate?.toFixed(4)
+          }
         }),
       });
 
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.message || 'Payment setup failed');
+        throw new Error(data.error || 'Payment setup failed');
       }
 
       setClientSecret(data.clientSecret);
@@ -269,7 +271,7 @@ export function Exchange() {
               }}
             >
               <PaymentForm 
-                amount={amount} 
+                amount={amount}
                 fromCurrency={fromCurrency}
                 toCurrency={toCurrency}
                 convertedAmount={convertedAmount}

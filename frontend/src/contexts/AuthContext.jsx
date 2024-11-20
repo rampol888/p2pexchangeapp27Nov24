@@ -4,7 +4,16 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem('userToken'));
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Initial token load
+  useEffect(() => {
+    const storedToken = localStorage.getItem('userToken');
+    setToken(storedToken);
+    setIsLoading(false);
+  }, []);
+
+  // Token persistence
   useEffect(() => {
     if (token) {
       localStorage.setItem('userToken', token);
@@ -21,8 +30,24 @@ export function AuthProvider({ children }) {
     setToken(null);
   };
 
+  // Show loading state while checking for token
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
   return (
-    <AuthContext.Provider value={{ token, login, logout }}>
+    <AuthContext.Provider 
+      value={{ 
+        token, 
+        login, 
+        logout,
+        isAuthenticated: !!token 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

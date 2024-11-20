@@ -5,7 +5,7 @@ import {
   useElements
 } from '@stripe/react-stripe-js';
 
-export function PaymentForm({ amount, fromCurrency, toCurrency, clientSecret }) {
+export function PaymentForm({ amount, fromCurrency, toCurrency, currency, clientSecret, isWallet = false }) {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState(null);
@@ -13,9 +13,7 @@ export function PaymentForm({ amount, fromCurrency, toCurrency, clientSecret }) 
   const [message, setMessage] = useState(null);
 
   useEffect(() => {
-    if (!stripe || !clientSecret) {
-      return;
-    }
+    if (!stripe || !clientSecret) return;
 
     stripe.retrievePaymentIntent(clientSecret).then(({ paymentIntent }) => {
       switch (paymentIntent.status) {
@@ -50,7 +48,7 @@ export function PaymentForm({ amount, fromCurrency, toCurrency, clientSecret }) 
       const { error } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/payment-success`,
+          return_url: `${window.location.origin}/dashboard/payment-success`,
         },
       });
 
@@ -72,12 +70,20 @@ export function PaymentForm({ amount, fromCurrency, toCurrency, clientSecret }) 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="bg-gray-700 rounded-lg p-4 mb-4">
-        <div className="text-white mb-2">
-          <span className="font-medium">Amount:</span> {amount} {fromCurrency}
-        </div>
-        <div className="text-gray-300 text-sm">
-          Converting to {toCurrency}
-        </div>
+        {isWallet ? (
+          <div className="text-white mb-2">
+            <span className="font-medium">Amount:</span> {amount} {currency}
+          </div>
+        ) : (
+          <>
+            <div className="text-white mb-2">
+              <span className="font-medium">Amount:</span> {amount} {fromCurrency}
+            </div>
+            <div className="text-gray-300 text-sm">
+              Converting to {toCurrency}
+            </div>
+          </>
+        )}
       </div>
 
       <PaymentElement />

@@ -4,6 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Wallet, Send, Plus, History } from 'lucide-react';
+import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
+import { WalletPaymentForm } from '@/components/Dashboard/components/WalletPaymentForm';
+import { toast } from 'react-hot-toast';
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 export const WalletComponent = () => {
   // State for multiple currency balances
@@ -23,6 +29,9 @@ export const WalletComponent = () => {
   const [recipient, setRecipient] = useState('');
   const [notification, setNotification] = useState('');
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [clientSecret, setClientSecret] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [showStripeForm, setShowStripeForm] = useState(false);
 
   // Currency configuration with symbols and exchange rates
   const currencyConfig = {
@@ -51,28 +60,63 @@ export const WalletComponent = () => {
   };
 
   // Handle adding money to wallet
-  const handleAddMoney = () => {
+  const handleAddMoney = async () => {
     if (addAmount && !isNaN(addAmount) && Number(addAmount) > 0) {
-      setBalances(prev => ({
-        ...prev,
-        [selectedCurrency]: prev[selectedCurrency] + Number(addAmount)
-      }));
+      setIsProcessingPayment(true);
+      try {
+        const amountInCents = Math.round(parseFloat(addAmount) * 100);
+        
+        const response = await fetch('http://localhost:3000/api/wallet/fund', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: amountInCents,
+            currency: selectedCurrency.toLowerCase()
+          }),
+        });
 
-      const newTransaction = {
-        id: Date.now(),
-        type: 'deposit',
-        amount: Number(addAmount),
-        currency: selectedCurrency,
-        date: new Date().toLocaleDateString(),
-        recipient: 'Wallet'
-      };
+        const data = await response.json();
 
-      setRecentTransactions(prev => [newTransaction, ...prev]);
-      setNotification(`Successfully added ${formatCurrency(Number(addAmount), selectedCurrency)}`);
-      setAddAmount('');
-      setShowAddMoney(false);
-      setTimeout(() => setNotification(''), 3000);
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to setup payment');
+        }
+
+        setClientSecret(data.clientSecret);
+        setShowStripeForm(true);
+      } catch (error) {
+        console.error('Payment setup error:', error);
+        setNotification(error.message || 'Failed to setup payment');
+        toast.error(error.message || 'Failed to setup payment');
+      } finally {
+        setIsProcessingPayment(false);
+      }
     }
+  };
+
+  const handlePaymentSuccess = () => {
+    setBalances(prev => ({
+      ...prev,
+      [selectedCurrency]: prev[selectedCurrency] + Number(addAmount)
+    }));
+
+    const newTransaction = {
+      id: Date.now(),
+      type: 'deposit',
+      amount: Number(addAmount),
+      currency: selectedCurrency,
+      date: new Date().toLocaleDateString(),
+      recipient: 'Wallet'
+    };
+
+    setRecentTransactions(prev => [newTransaction, ...prev]);
+    setNotification(`Successfully added ${formatCurrency(Number(addAmount), selectedCurrency)}`);
+    setAddAmount('');
+    setShowAddMoney(false);
+    setShowStripeForm(false);
+    setClientSecret('');
+    setTimeout(() => setNotification(''), 3000);
   };
 
   // Handle sending money
@@ -158,7 +202,7 @@ export const WalletComponent = () => {
                       </span>
                     )}
                   </div>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-bold text-black">
                     {formatCurrency(amount, currency)}
                   </div>
                 </div>
@@ -186,18 +230,76 @@ export const WalletComponent = () => {
             {/* Add Money Form */}
             {showAddMoney && (
               <div className="space-y-4 mb-6 bg-gray-50/50 backdrop-blur-sm p-6 rounded-xl border border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900">Add Money</h3>
-                <div className="space-y-4">
-                  <Input
-                    type="number"
-                    placeholder={`Enter amount in ${selectedCurrency}`}
-                    value={addAmount}
-                    onChange={(e) => setAddAmount(e.target.value)}
-                  />
-                  <Button onClick={handleAddMoney} className="w-full">
-                    Add Money
-                  </Button>
-                </div>
+                <h3 className="text-lg font-semibold text-black">Add Money</h3>
+                {!showStripeForm ? (
+                  <div className="space-y-4">
+                    <Input
+                      type="number"
+                      placeholder={`Enter amount in ${selectedCurrency}`}
+                      value={addAmount}
+                      onChange={(e) => setAddAmount(e.target.value)}
+                      className="bg-white border-gray-200 text-black placeholder:text-gray-500 focus:border-black focus:ring-black"
+                      style={{ color: 'black' }}
+                    />
+                    <select
+                      value={selectedCurrency}
+                      onChange={(e) => setSelectedCurrency(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-black focus:ring-2 focus:ring-black focus:border-black"
+                    >
+                      {Object.keys(currencyConfig).map((curr) => (
+                        <option 
+                          key={curr} 
+                          value={curr}
+                          className="text-black bg-white"
+                        >
+                          {curr} {currencyConfig[curr].icon}
+                        </option>
+                      ))}
+                    </select>
+                    <Button 
+                      onClick={handleAddMoney} 
+                      className="w-full bg-black hover:bg-black/90 text-white"
+                      disabled={isProcessingPayment}
+                    >
+                      {isProcessingPayment ? 'Processing...' : 'Continue to Payment'}
+                    </Button>
+                  </div>
+                ) : (
+                  <Elements 
+                    stripe={stripePromise} 
+                    options={{
+                      clientSecret,
+                      appearance: {
+                        theme: 'stripe',
+                        variables: {
+                          colorPrimary: '#000000',
+                          colorBackground: '#ffffff',
+                          colorText: '#000000',
+                          colorDanger: '#EF4444',
+                          fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+                          borderRadius: '8px',
+                        },
+                        rules: {
+                          '.Input': {
+                            color: '#000000',
+                            borderColor: '#E5E7EB',
+                          },
+                          '.Input:focus': {
+                            borderColor: '#000000',
+                            boxShadow: '0 0 0 1px #000000',
+                          },
+                        },
+                      },
+                    }}
+                  >
+                    <WalletPaymentForm 
+                      amount={addAmount}
+                      currency={selectedCurrency}
+                      clientSecret={clientSecret}
+                      onSuccess={handlePaymentSuccess}
+                    />
+                  </Elements>
+                )}
               </div>
             )}
 
