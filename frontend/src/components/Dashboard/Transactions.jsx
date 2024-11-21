@@ -1,24 +1,10 @@
 import React from 'react';
+import { useTransactions } from '@/contexts/TransactionContext';
 
 export function Transactions() {
-  const transactions = [
-    {
-      id: 1,
-      date: '2024-03-20',
-      type: 'Exchange',
-      amount: '500',
-      currency: 'USD',
-      status: 'Completed'
-    },
-    {
-      id: 2,
-      date: '2024-03-19',
-      type: 'Exchange',
-      amount: '300',
-      currency: 'EUR',
-      status: 'Pending'
-    }
-  ];
+  const { transactions } = useTransactions();
+
+  console.log('Current transactions:', transactions);
 
   return (
     <div>
@@ -35,10 +21,13 @@ export function Transactions() {
                 Type
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Amount
+                From
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Currency
+                To
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                Rate
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                 Status
@@ -46,33 +35,44 @@ export function Transactions() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700">
-            {transactions.map((transaction) => (
-              <tr key={transaction.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  {transaction.date}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  {transaction.type}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  {transaction.amount}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  {transaction.currency}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span
-                    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      transaction.status === 'Completed'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}
-                  >
-                    {transaction.status}
-                  </span>
+            {transactions.length > 0 ? (
+              transactions.map((transaction) => (
+                <tr key={transaction.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                    {new Date(transaction.date).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                    {transaction.type}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                    {transaction.fromAmount} {transaction.fromCurrency}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                    {transaction.toAmount} {transaction.toCurrency}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                    {transaction.exchangeRate}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <span
+                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        transaction.status === 'Completed'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}
+                    >
+                      {transaction.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="6" className="px-6 py-4 text-center text-gray-400">
+                  No transactions found
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

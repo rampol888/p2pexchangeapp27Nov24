@@ -48,66 +48,62 @@ const validateCurrency = (req, res, next) => {
   next();
 };
 
-router.post('/create-payment-intent', validatePaymentIntent, validateCurrency, async (req, res) => {
+router.post('/create-payment-intent', async (req, res) => {
   try {
-    const { amount, fromCurrency, toCurrency } = req.body;
-    
-    // Convert amount to smallest currency unit (cents, yen, etc.)
-    const multiplier = fromCurrency === 'JPY' ? 1 : 100;
-    const amountInSmallestUnit = Math.round(parseFloat(amount) * multiplier);
+    const { amount, currency } = req.body;
+
+    // Convert amount to cents/smallest currency unit
+    const amountInSmallestUnit = Math.round(amount * 100);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInSmallestUnit,
-      currency: fromCurrency.toLowerCase(),
-      payment_method_types: ['card'],
+      currency: currency.toLowerCase(),
+      automatic_payment_methods: {
+        enabled: true,
+      },
+      // Optional metadata
       metadata: {
-        fromCurrency,
-        toCurrency,
-        originalAmount: amount.toString()
-      }
+        type: 'currency_exchange',
+        fromCurrency: currency,
+      },
     });
 
     res.json({
       clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id
     });
-
   } catch (error) {
     console.error('Payment intent error:', error);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({
+      error: {
+        message: error.message || 'An error occurred while creating the payment intent',
+      }
+    });
   }
 });
 
-router.get('/verify-payment/:paymentIntentId', async (req, res) => {
+router.get('/verify-payment/:paymentIntentId', auth, async (req, res) => {
   try {
     const { paymentIntentId } = req.params;
-    
-    console.log('Verifying payment:', paymentIntentId);
 
+    // Retrieve the payment intent from Stripe
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    
-    console.log('Payment intent retrieved:', paymentIntent);
 
-    // Format the response
-    const response = {
-      status: paymentIntent.status,
-      amount: (paymentIntent.amount / 100).toFixed(2),
+    if (!paymentIntent) {
+      return res.status(404).json({ message: 'Payment not found' });
+    }
+
+    // Return payment details
+    res.json({
+      amount: paymentIntent.amount / 100, // Convert from cents
       currency: paymentIntent.currency,
-      metadata: {
-        originalAmount: paymentIntent.metadata.originalAmount,
-        fromCurrency: paymentIntent.metadata.fromCurrency,
-        exchangeRate: paymentIntent.metadata.exchangeRate
-      }
-    };
+      status: paymentIntent.status,
+      metadata: paymentIntent.metadata,
+    });
 
-    console.log('Sending response:', response);
-    
-    res.json(response);
   } catch (error) {
-    console.error('Verification error:', error);
-    res.status(500).json({ 
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    console.error('Payment verification error:', error);
+    res.status(400).json({
+      message: error.message || 'Failed to verify payment'
     });
   }
 });

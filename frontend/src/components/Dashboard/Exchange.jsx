@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { PaymentForm } from './components/PaymentForm';
+import { useTransactions } from '@/contexts/TransactionContext';
+import { toast } from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
@@ -56,6 +59,8 @@ export function Exchange() {
   const [convertedAmount, setConvertedAmount] = useState(null);
   const [exchangeRate, setExchangeRate] = useState(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const { addTransaction } = useTransactions();
+  const navigate = useNavigate();
 
   const validateAmount = (amount, currency) => {
     const minAmount = minAmounts[currency];
@@ -100,6 +105,7 @@ export function Exchange() {
   const handleProceedToPayment = async () => {
     setLoading(true);
     try {
+      // Convert amount to cents/smallest currency unit
       const amountInCents = Math.round(Number(amount) * 100);
       
       const response = await fetch('http://localhost:3000/api/payment/create-payment-intent', {
@@ -108,15 +114,8 @@ export function Exchange() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount: amountInCents,
+          amount: Number(amount), // Send original amount
           currency: fromCurrency.toLowerCase(),
-          metadata: {
-            fromAmount: amount,
-            fromCurrency,
-            toAmount: convertedAmount?.toFixed(2),
-            toCurrency,
-            exchangeRate: exchangeRate?.toFixed(4)
-          }
         }),
       });
 
@@ -143,6 +142,35 @@ export function Exchange() {
       colorBackground: '#374151',
       colorText: '#ffffff',
     },
+  };
+
+  const handlePaymentSuccess = (paymentIntent) => {
+    console.log('Payment successful:', paymentIntent); // Debug log
+
+    // Create transaction record
+    const newTransaction = {
+      id: paymentIntent.id,
+      date: new Date().toISOString(),
+      type: 'Exchange',
+      fromAmount: amount,
+      fromCurrency,
+      toAmount: convertedAmount?.toFixed(2),
+      toCurrency,
+      status: 'Completed',
+      exchangeRate: exchangeRate?.toFixed(4)
+    };
+
+    console.log('Adding transaction:', newTransaction); // Debug log
+
+    // Add to transaction history
+    addTransaction(newTransaction);
+
+    // Store in localStorage as well
+    const existingTransactions = JSON.parse(localStorage.getItem('transactions') || '[]');
+    localStorage.setItem('transactions', JSON.stringify([newTransaction, ...existingTransactions]));
+
+    // Navigate to success page
+    navigate(`/dashboard/payment-success?payment_intent=${paymentIntent.id}`);
   };
 
   return (
@@ -276,6 +304,8 @@ export function Exchange() {
                 toCurrency={toCurrency}
                 convertedAmount={convertedAmount}
                 clientSecret={clientSecret}
+                onSuccess={handlePaymentSuccess}
+                exchangeRate={exchangeRate}
               />
             </Elements>
           </div>

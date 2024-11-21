@@ -64,20 +64,20 @@ export function Navigation() {
             />
           </Link>
 
-          {/* Navigation Links */}
+          {/* Navigation Links - Updated text sizes */}
           <div className="flex items-center space-x-4">
             <Link
               to="/"
-              className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium"
             >
               Home
             </Link>
             
-            {/* Services Dropdown */}
+            {/* Services Dropdown - Updated text size */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setIsServicesOpen(!isServicesOpen)}
-                className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium inline-flex items-center"
+                className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium inline-flex items-center"
               >
                 Services
                 <ChevronDown className={`ml-1 h-4 w-4 transition-transform ${isServicesOpen ? 'rotate-180' : ''}`} />
@@ -114,20 +114,20 @@ export function Navigation() {
 
             <Link
               to="/contact"
-              className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium"
             >
               Contact Us
             </Link>
             
             <Link
               to="/login"
-              className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-base font-medium"
             >
               Login
             </Link>
             <Link
               to="/signup"
-              className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
+              className="bg-blue-600 text-white px-4 py-2 rounded-md text-base font-medium hover:bg-blue-700"
             >
               Sign Up
             </Link>

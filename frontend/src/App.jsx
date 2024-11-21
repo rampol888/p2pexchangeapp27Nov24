@@ -15,65 +15,68 @@ import { WalletComponent } from './components/WalletComponent';
 import { Card } from './components/Card';
 import { AuthProvider } from './contexts/AuthContext';
 import { ContactUs } from './components/ContactUs';
+import { TransactionProvider } from './contexts/TransactionContext';
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <div className="min-h-screen">
-          <Navigation />
-          <main className="pt-14">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/login" element={<LoginPage />} />
+    <TransactionProvider>
+      <Router>
+        <AuthProvider>
+          <div className="min-h-screen">
+            <Navigation />
+            <main className="pt-14">
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/login" element={<LoginPage />} />
 
-              {/* Protected Routes */}
-              <Route path="/kyc" element={
-                <ProtectedRoute>
-                  <KYCForm />
-                </ProtectedRoute>
-              } />
-              <Route path="/dashboard/*" element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }>
-                <Route index element={<DashboardHome />} />
-                <Route path="exchange" element={<Exchange />} />
-                <Route path="transactions" element={<Transactions />} />
-                <Route path="payment" element={<Payment />} />
-                <Route path="wallet" element={<WalletComponent />} />
-                <Route path="payment-success" element={<PaymentSuccess />} />
-              </Route>
-              
-              {/* Remove duplicate routes or protect them if needed */}
-              <Route path="/card" element={
-                <ProtectedRoute>
-                  <Card />
-                </ProtectedRoute>
-              } />
-              <Route path="/exchange" element={
-                <ProtectedRoute>
-                  <Exchange />
-                </ProtectedRoute>
-              } />
-              <Route path="/wallet" element={
-                <ProtectedRoute>
-                  <WalletComponent />
-                </ProtectedRoute>
-              } />
-              <Route path="/payments" element={
-                <ProtectedRoute>
-                  <Payment />
-                </ProtectedRoute>
-              } />
-              <Route path="/contact" element={<ContactUs />} />
-            </Routes>
-          </main>
-        </div>
-      </AuthProvider>
-    </Router>
+                {/* Protected Routes */}
+                <Route path="/kyc" element={
+                  <ProtectedRoute>
+                    <KYCForm />
+                  </ProtectedRoute>
+                } />
+                <Route path="/dashboard/*" element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<DashboardHome />} />
+                  <Route path="exchange" element={<Exchange />} />
+                  <Route path="transactions" element={<Transactions />} />
+                  <Route path="payment" element={<Payment />} />
+                  <Route path="wallet" element={<WalletComponent />} />
+                  <Route path="payment-success" element={<PaymentSuccess />} />
+                </Route>
+                
+                {/* Remove duplicate routes or protect them if needed */}
+                <Route path="/card" element={
+                  <ProtectedRoute>
+                    <Card />
+                  </ProtectedRoute>
+                } />
+                <Route path="/exchange" element={
+                  <ProtectedRoute>
+                    <Exchange />
+                  </ProtectedRoute>
+                } />
+                <Route path="/wallet" element={
+                  <ProtectedRoute>
+                    <WalletComponent />
+                  </ProtectedRoute>
+                } />
+                <Route path="/payments" element={
+                  <ProtectedRoute>
+                    <Payment />
+                  </ProtectedRoute>
+                } />
+                <Route path="/contact" element={<ContactUs />} />
+              </Routes>
+            </main>
+          </div>
+        </AuthProvider>
+      </Router>
+    </TransactionProvider>
   );
 }
 
