@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Dependencies
 node_modules/
 */node_modules/
@@ -16,13 +17,38 @@ build/
 */.DS_Store
 
 # Logs
+=======
+# Logs
+logs
+>>>>>>> 21ec821 (Initial commit: P2P Exchange Frontend)
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+<<<<<<< HEAD
 
 # IDE specific files
 .idea/
 .vscode/
 *.swp
 *.swo
+=======
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+>>>>>>> 21ec821 (Initial commit: P2P Exchange Frontend)
