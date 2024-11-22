@@ -1,6 +1,7 @@
 import express from 'express';
 import Stripe from 'stripe';
 import dotenv from 'dotenv';
+import { validateBankDetails } from '../utils/bankValidation';
 
 dotenv.config();
 
@@ -107,5 +108,84 @@ router.get('/verify-payment/:paymentIntentId', auth, async (req, res) => {
     });
   }
 });
+
+router.post('/bank-transfer', async (req, res) => {
+  try {
+    const { amount, currency, bankDetails } = req.body;
+
+    // Validate bank details based on country
+    const validationError = validateBankDetails(bankDetails);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    // Create payment intent for bank transfer
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100),
+      currency: currency.toLowerCase(),
+      payment_method_types: ['sepa_debit', 'bacs_debit', 'au_becs_debit'],
+      payment_method_data: {
+        type: getBankTransferType(bankDetails.country),
+        billing_details: {
+          name: bankDetails.name,
+          email: bankDetails.email,
+        },
+        [getBankTransferType(bankDetails.country)]: {
+          country: bankDetails.country,
+          ...getBankAccountDetails(bankDetails)
+        }
+      },
+      confirm: true,
+    });
+
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntent: paymentIntent
+    });
+
+  } catch (error) {
+    console.error('Bank transfer error:', error);
+    res.status(400).json({
+      error: error.message
+    });
+  }
+});
+
+function getBankTransferType(country) {
+  const types = {
+    GB: 'bacs_debit',
+    EU: 'sepa_debit',
+    US: 'ach_debit',
+    SG: 'sg_bank_transfer'
+  };
+  return types[country] || 'sepa_debit';
+}
+
+function getBankAccountDetails(bankDetails) {
+  switch (bankDetails.country) {
+    case 'GB':
+      return {
+        sort_code: bankDetails.sortCode,
+        account_number: bankDetails.bankAccount
+      };
+    case 'US':
+      return {
+        routing_number: bankDetails.routingNumber,
+        account_number: bankDetails.bankAccount
+      };
+    case 'EU':
+      return {
+        iban: bankDetails.bankAccount
+      };
+    case 'SG':
+      return {
+        bank_code: bankDetails.bankCode,
+        branch_code: bankDetails.branchCode,
+        account_number: bankDetails.bankAccount
+      };
+    default:
+      return {};
+  }
+}
 
 export default router;

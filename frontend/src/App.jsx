@@ -16,6 +16,7 @@ import { Card } from './components/Card';
 import { AuthProvider } from './contexts/AuthContext';
 import { ContactUs } from './components/ContactUs';
 import { TransactionProvider } from './contexts/TransactionContext';
+import { TransactionSuccess } from './components/Dashboard/TransactionSuccess';
 
 function App() {
   return (
@@ -71,6 +72,7 @@ function App() {
                   </ProtectedRoute>
                 } />
                 <Route path="/contact" element={<ContactUs />} />
+                <Route path="/transaction-success" element={<TransactionSuccess />} />
               </Routes>
             </main>
           </div>
