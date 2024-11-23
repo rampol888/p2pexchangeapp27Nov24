@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStripe, useElements, IbanElement } from '@stripe/react-stripe-js';
+import { BeneficiaryService } from '../../../services/BeneficiaryService';
+import { BeneficiaryForm } from './BeneficiaryForm';
 
 const BANK_FORMATS = {
   EUR: {
@@ -104,6 +106,19 @@ export function BankTransferForm({ amount, currency, toCurrency, onSuccess }) {
       country: ''
     }
   });
+  const [selectedBeneficiary, setSelectedBeneficiary] = useState(null);
+  const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
+
+  useEffect(() => {
+    if (selectedBeneficiary) {
+      setBankDetails(prev => ({
+        ...prev,
+        ...selectedBeneficiary.bankDetails,
+        name: selectedBeneficiary.name,
+        address: selectedBeneficiary.address
+      }));
+    }
+  }, [selectedBeneficiary]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -493,8 +508,54 @@ export function BankTransferForm({ amount, currency, toCurrency, onSuccess }) {
     }
   };
 
+  if (showAddBeneficiary) {
+    return (
+      <BeneficiaryForm
+        currency={currency}
+        onSave={(beneficiary) => {
+          setSelectedBeneficiary(beneficiary);
+          setShowAddBeneficiary(false);
+        }}
+        onCancel={() => setShowAddBeneficiary(false)}
+      />
+    );
+  }
+
+  const beneficiaries = BeneficiaryService.getBeneficiariesByCurrency(currency);
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {beneficiaries.length > 0 && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Select Beneficiary
+          </label>
+          <select
+            value={selectedBeneficiary?.id || ''}
+            onChange={(e) => {
+              const beneficiary = BeneficiaryService.getBeneficiaryById(e.target.value);
+              setSelectedBeneficiary(beneficiary);
+            }}
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+          >
+            <option value="">Select a beneficiary</option>
+            {beneficiaries.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name} - {b.bankDetails.bankName}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowAddBeneficiary(true)}
+        className="mb-6 text-blue-400 hover:text-blue-300"
+      >
+        + Add New Beneficiary
+      </button>
+
       <div className="space-y-4">
         {/* Common Fields */}
         <div>
