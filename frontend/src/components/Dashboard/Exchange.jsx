@@ -5,6 +5,7 @@ import { PaymentForm } from './components/PaymentForm';
 import { BankTransferForm } from './components/BankTransferForm';
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { CURRENCIES } from '../../config/currencies';
+import { fetchExchangeRate } from '../../utils/currencyApi';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
@@ -64,6 +65,32 @@ export function Exchange() {
     message: '',
     transactionId: null
   });
+  const [exchangeRate, setExchangeRate] = useState(null);
+  const [convertedAmount, setConvertedAmount] = useState(null);
+
+  const fetchAndUpdateRate = async (fromCurrency) => {
+    try {
+      setError(null); // Clear any existing errors
+      const data = await fetchExchangeRate(fromCurrency);
+      
+      if (!data.conversion_rates[exchangeDetails.toCurrency]) {
+        throw new Error(`Rate not found for ${exchangeDetails.toCurrency}`);
+      }
+      
+      const rate = data.conversion_rates[exchangeDetails.toCurrency];
+      setExchangeRate(rate);
+      
+      if (exchangeDetails.amount) {
+        const converted = (parseFloat(exchangeDetails.amount) * rate).toFixed(2);
+        setConvertedAmount(converted);
+      }
+    } catch (error) {
+      console.error('Exchange error:', error);
+      setError('Unable to fetch current exchange rate. Please try again later.');
+      setExchangeRate(null);
+      setConvertedAmount(null);
+    }
+  };
 
   const handleProceedToPayment = async () => {
     if (!exchangeDetails.amount || parseFloat(exchangeDetails.amount) <= 0) {
@@ -155,10 +182,37 @@ export function Exchange() {
     setError(null);
   }, [exchangeDetails.amount, exchangeDetails.fromCurrency]);
 
+  useEffect(() => {
+    if (exchangeDetails.fromCurrency && exchangeDetails.toCurrency) {
+      fetchAndUpdateRate(exchangeDetails.fromCurrency);
+    }
+  }, [exchangeDetails.fromCurrency, exchangeDetails.toCurrency]);
+
+  const handleAmountChange = (e) => {
+    const newAmount = e.target.value;
+    setExchangeDetails(prev => ({
+      ...prev,
+      amount: newAmount
+    }));
+    
+    if (exchangeRate && newAmount) {
+      const converted = (parseFloat(newAmount) * exchangeRate).toFixed(2);
+      setConvertedAmount(converted);
+    } else {
+      setConvertedAmount(null);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="bg-gray-800 rounded-xl p-8">
         <h1 className="text-2xl font-bold text-white mb-6">Currency Exchange</h1>
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-500/10 border border-red-500 rounded-lg">
+            <p className="text-red-500 text-sm">{error}</p>
+          </div>
+        )}
 
         {/* Amount Input */}
         <div className="mb-6">
@@ -168,10 +222,7 @@ export function Exchange() {
           <input
             type="number"
             value={exchangeDetails.amount}
-            onChange={(e) => setExchangeDetails(prev => ({
-              ...prev,
-              amount: e.target.value
-            }))}
+            onChange={handleAmountChange}
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white"
             placeholder="Enter amount"
             min="0"
@@ -222,6 +273,28 @@ export function Exchange() {
             </select>
           </div>
         </div>
+
+        {/* Exchange Rate Display */}
+        {exchangeRate && !error && (
+          <div className="mt-4 p-4 bg-gray-700/30 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div className="text-gray-300">
+                <span className="text-sm">Exchange Rate:</span>
+                <span className="ml-2 font-medium">
+                  1 {exchangeDetails.fromCurrency} = {exchangeRate} {exchangeDetails.toCurrency}
+                </span>
+              </div>
+              {convertedAmount && (
+                <div className="text-right">
+                  <div className="text-sm text-gray-400">You'll receive approximately:</div>
+                  <div className="text-lg font-semibold text-white">
+                    {convertedAmount} {exchangeDetails.toCurrency}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Error Display */}
         {error && (
