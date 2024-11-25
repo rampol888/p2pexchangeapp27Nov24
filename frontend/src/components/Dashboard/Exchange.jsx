@@ -102,9 +102,16 @@ export function Exchange() {
       setLoading(true);
       setError(null);
 
+      // Get userId from localStorage
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+
       console.log('Creating payment intent:', {
         amount: exchangeDetails.amount,
-        currency: exchangeDetails.fromCurrency
+        currency: exchangeDetails.fromCurrency,
+        userId
       });
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/payment/create-payment-intent`, {
@@ -113,9 +120,14 @@ export function Exchange() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount: Math.round(parseFloat(exchangeDetails.amount) * 100),
-          currency: exchangeDetails.fromCurrency.toLowerCase(),
-          paymentMethod: paymentMethod // Send the selected payment method
+          amount: parseFloat(exchangeDetails.amount),
+          currency: exchangeDetails.fromCurrency,
+          userId: parseInt(userId),
+          metadata: {
+            exchangeRate: exchangeRate,
+            toCurrency: exchangeDetails.toCurrency,
+            convertedAmount: convertedAmount
+          }
         }),
       });
 
@@ -125,18 +137,11 @@ export function Exchange() {
         throw new Error(data.error || 'Failed to setup payment');
       }
 
-      console.log('Payment intent created:', {
-        clientSecret: data.clientSecret ? 'Present' : 'Missing',
-        paymentMethod
-      });
-
       setClientSecret(data.clientSecret);
       setShowPayment(true);
     } catch (err) {
       console.error('Payment setup error:', err);
       setError(err.message);
-      setShowPayment(false);
-      setClientSecret(null);
     } finally {
       setLoading(false);
     }

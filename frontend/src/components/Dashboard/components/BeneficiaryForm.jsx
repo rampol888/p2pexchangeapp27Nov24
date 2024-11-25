@@ -1,188 +1,243 @@
-import { useState } from 'react';
-import { BeneficiaryService } from '../../../services/BeneficiaryService';
-import { BANK_REQUIREMENTS } from '../../../types/beneficiary';
+import React, { useState } from 'react';
 
-export function BeneficiaryForm({ currency, onSave, onCancel }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    currency,
-    bankDetails: {},
-    address: {
-      line1: '',
-      city: '',
-      state: '',
-      postal_code: '',
-      country: ''
-    }
-  });
+export function BeneficiaryForm({ onSuccess }) {
+    const [formData, setFormData] = useState({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phoneNumber: '',
+        bankName: '',
+        accountNumber: '',
+        swiftCode: '',
+        country: '',
+        city: '',
+        address: '',
+        relationship: ''
+    });
 
-  const [errors, setErrors] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const validationErrors = BeneficiaryService.validateBeneficiary(formData);
-    
-    if (validationErrors.length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
 
-    const savedBeneficiary = BeneficiaryService.saveBeneficiary(formData);
-    onSave(savedBeneficiary);
-  };
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError(null);
 
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      bankDetails: {
-        ...prev.bankDetails,
-        [field]: value
-      }
-    }));
-  };
+        try {
+            const userId = localStorage.getItem('userId');
+            if (!userId) {
+                throw new Error('User not authenticated');
+            }
 
-  const handleAddressChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      address: {
-        ...prev.address,
-        [field]: value
-      }
-    }));
-  };
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/beneficiaries`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userId: parseInt(userId),
+                    ...formData
+                }),
+            });
 
-  const renderBankFields = () => {
-    const requiredFields = BANK_REQUIREMENTS[currency] || [];
-    
-    return requiredFields.map(field => (
-      <div key={field} className="mb-4">
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          {field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1')}
-        </label>
-        <input
-          type="text"
-          value={formData.bankDetails[field] || ''}
-          onChange={(e) => handleInputChange(field, e.target.value)}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-          required
-        />
-      </div>
-    ));
-  };
+            const data = await response.json();
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {errors.length > 0 && (
-        <div className="bg-red-500/10 border border-red-500 rounded p-3">
-          {errors.map((error, index) => (
-            <p key={index} className="text-red-500 text-sm">{error}</p>
-          ))}
-        </div>
-      )}
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to add beneficiary');
+            }
 
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          Beneficiary Name
-        </label>
-        <input
-          type="text"
-          value={formData.name}
-          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-          required
-        />
-      </div>
+            onSuccess?.(data);
+            // Reset form
+            setFormData({
+                firstName: '',
+                lastName: '',
+                email: '',
+                phoneNumber: '',
+                bankName: '',
+                accountNumber: '',
+                swiftCode: '',
+                country: '',
+                city: '',
+                address: '',
+                relationship: ''
+            });
+        } catch (err) {
+            console.error('Beneficiary save error:', err);
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-      {renderBankFields()}
+    return (
+        <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Personal Information */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-200">Personal Information</h3>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">First Name</label>
+                        <input
+                            type="text"
+                            name="firstName"
+                            value={formData.firstName}
+                            onChange={handleChange}
+                            required
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">Last Name</label>
+                        <input
+                            type="text"
+                            name="lastName"
+                            value={formData.lastName}
+                            onChange={handleChange}
+                            required
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                </div>
 
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          Bank Name
-        </label>
-        <input
-          type="text"
-          value={formData.bankDetails.bankName || ''}
-          onChange={(e) => handleInputChange('bankName', e.target.value)}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-        />
-      </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">Email</label>
+                        <input
+                            type="email"
+                            name="email"
+                            value={formData.email}
+                            onChange={handleChange}
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">Phone Number</label>
+                        <input
+                            type="tel"
+                            name="phoneNumber"
+                            value={formData.phoneNumber}
+                            onChange={handleChange}
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                </div>
+            </div>
 
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium text-gray-200">Address</h3>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Address Line 1
-          </label>
-          <input
-            type="text"
-            value={formData.address.line1}
-            onChange={(e) => handleAddressChange('line1', e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-            required
-          />
-        </div>
+            {/* Bank Information */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-200">Bank Information</h3>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">Bank Name</label>
+                        <input
+                            type="text"
+                            name="bankName"
+                            value={formData.bankName}
+                            onChange={handleChange}
+                            required
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">Account Number</label>
+                        <input
+                            type="text"
+                            name="accountNumber"
+                            value={formData.accountNumber}
+                            onChange={handleChange}
+                            required
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            City
-          </label>
-          <input
-            type="text"
-            value={formData.address.city}
-            onChange={(e) => handleAddressChange('city', e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-            required
-          />
-        </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-300">SWIFT Code</label>
+                    <input
+                        type="text"
+                        name="swiftCode"
+                        value={formData.swiftCode}
+                        onChange={handleChange}
+                        className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                    />
+                </div>
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            State
-          </label>
-          <input
-            type="text"
-            value={formData.address.state}
-            onChange={(e) => handleAddressChange('state', e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-            required
-          />
-        </div>
+            {/* Address Information */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-200">Address Information</h3>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">Country</label>
+                        <input
+                            type="text"
+                            name="country"
+                            value={formData.country}
+                            onChange={handleChange}
+                            required
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300">City</label>
+                        <input
+                            type="text"
+                            name="city"
+                            value={formData.city}
+                            onChange={handleChange}
+                            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                        />
+                    </div>
+                </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Postal Code
-          </label>
-          <input
-            type="text"
-            value={formData.address.postal_code}
-            onChange={(e) => handleAddressChange('postal_code', e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-            required
-          />
-        </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-300">Address</label>
+                    <textarea
+                        name="address"
+                        value={formData.address}
+                        onChange={handleChange}
+                        className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                    />
+                </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Country
-          </label>
-          <input
-            type="text"
-            value={formData.address.country}
-            onChange={(e) => handleAddressChange('country', e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-            required
-          />
-        </div>
-      </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-300">Relationship</label>
+                    <input
+                        type="text"
+                        name="relationship"
+                        value={formData.relationship}
+                        onChange={handleChange}
+                        className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+                    />
+                </div>
+            </div>
 
-      <div className="mt-4">
-        <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded-lg">
-          Save
-        </button>
-        <button type="button" onClick={onCancel} className="bg-gray-500 text-white px-4 py-2 rounded-lg ml-2">
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
+            {error && (
+                <div className="text-red-500 bg-red-500/10 border border-red-500 rounded-lg p-4">
+                    {error}
+                </div>
+            )}
+
+            <button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full py-3 px-4 rounded-lg ${
+                    isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'
+                } text-white transition-colors`}
+            >
+                {isLoading ? 'Saving...' : 'Save Beneficiary'}
+            </button>
+        </form>
+    );
 } 
