@@ -156,11 +156,13 @@ export const WalletComponent = () => {
         <Card className="bg-white/80 backdrop-blur-sm shadow-xl border-0 rounded-2xl">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-3 text-2xl">
+              <div className="flex items-center gap-3">
                 <div className="p-2 bg-wallet-500 rounded-lg">
                   <Wallet className="h-6 w-6 text-white" />
                 </div>
-                Digital Wallet
+                <span className="text-4xl font-extrabold tracking-wider text-black">
+                  Digital Wallet
+                </span>
               </div>
               <div className="flex gap-2">
                 {Object.entries(currencyConfig).map(([code, { icon }]) => (

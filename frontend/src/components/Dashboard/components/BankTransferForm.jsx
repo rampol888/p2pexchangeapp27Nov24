@@ -588,7 +588,9 @@ export function BankTransferForm({ amount, currency, toCurrency, onSuccess }) {
 
         {/* Add Address Fields */}
         <div className="space-y-4">
-          <h3 className="text-sm font-medium text-gray-300">Billing Address</h3>
+          <h3 className="text-2xl font-bold text-gray-200 tracking-wide">
+            Billing Address
+          </h3>
           
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">

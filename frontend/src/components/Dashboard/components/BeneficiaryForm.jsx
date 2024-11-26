@@ -81,7 +81,7 @@ export function BeneficiaryForm({ onSuccess }) {
         <form onSubmit={handleSubmit} className="space-y-6">
             {/* Personal Information */}
             <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-200">Personal Information</h3>
+                <h3 className="text-2xl font-bold text-gray-200 tracking-wide">Personal Information</h3>
                 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -134,7 +134,7 @@ export function BeneficiaryForm({ onSuccess }) {
 
             {/* Bank Information */}
             <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-200">Bank Information</h3>
+                <h3 className="text-2xl font-bold text-gray-200 tracking-wide">Bank Information</h3>
                 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -175,7 +175,7 @@ export function BeneficiaryForm({ onSuccess }) {
 
             {/* Address Information */}
             <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-200">Address Information</h3>
+                <h3 className="text-2xl font-bold text-gray-200 tracking-wide">Address Information</h3>
                 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
