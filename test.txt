@@ -1,0 +1,706 @@
+--output-----
+# outputs.tf
+
+output "alb_hostname" {
+  value = aws_alb.main.dns_name
+}
+
+# provider.tf
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+      version = "5.17.0"
+    }
+  }
+}
+# Specify the provider and access details
+provider "aws" {
+  #profile                 = "53-acc"
+  region                  = var.aws_region
+}
+-----security-
+
+# security.tf
+
+# ALB Security Group: Edit to restrict access to the application
+resource "aws_security_group" "lb" {
+  name        = var.alb_sg
+  description = "controls access to the ALB"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    protocol   = "tcp"
+    from_port  = 80
+    to_port    = 80
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    protocol   = "tcp"
+    from_port  = 443
+    to_port    = 443
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Traffic to the ECS cluster should only come from the ALB
+resource "aws_security_group" "ecs_tasks" {
+  name        = var.ecs_task_sg
+  description = "allow inbound access from the ALB only"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    protocol        = "tcp"
+    from_port       = 0
+    to_port         = 65535
+    security_groups = [aws_security_group.lb.id]
+  }
+
+  egress {
+    protocol    = "-1"
+    from_port   = 0
+    to_port     = 0
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+-------roles
+# ECS task execution role data
+data "aws_iam_policy_document" "ecs_task_execution_role" {
+  version = "2012-10-17"
+  statement {
+    sid = ""
+    effect = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+# ECS task execution role
+resource "aws_iam_role" "ecs_task_execution_role" {
+  name               = var.ecs_task_execution_role_name
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_role.json
+}
+
+# ECS task execution role policy attachment
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+-------ecs.tf
+# ALBcreation
+
+#Create an AWS ALB for the course recommender app
+
+#resource "aws_s3_bucket" "lb-logs" {
+#  bucket = "531606804770-alb-logs/test-1-alb-logs"
+#}
+
+resource "aws_alb" "main" {
+  name            = var.alb_name
+  load_balancer_type = "application"
+  subnets = [
+    aws_subnet.private_ap_southeast_1a.id,
+    aws_subnet.private_ap_southeast_1b.id
+  ]
+
+ security_groups = [aws_security_group.lb.id]
+
+#access_logs {
+#    bucket  = aws_s3_bucket.lb-logs.id
+#    prefix  = "test-1-alb-logs"
+#    enabled = true
+#  }
+#tags = {
+#    Owner        = "xiong yong"
+#    Project      = "payment service"
+#    Environment = "prod"
+#  }
+
+}
+
+#Forward all ALB traffic to target group
+resource "aws_alb_target_group" "app" {
+  name        = var.target_group_name
+  port        = var.container_port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    healthy_threshold   = "3"
+    interval            = "30"
+    protocol            = "HTTP"
+    matcher             = "200"
+    timeout             = "3"
+    path                = var.health_check_path
+    unhealthy_threshold = "2"
+  }
+#tags = {
+#    Owner        = "xiong yong"
+#    Project      = "payment service"
+#    Environment = "prod"
+ # }
+}
+
+#Creating HTTP Listener and redirect port 80 traffic to https port 443
+resource "aws_alb_listener" "http" {
+  load_balancer_arn = aws_alb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+//**** This will create a  ACM Certificate ************* //
+#Secure ALB with TLS certificate
+#resource "aws_acm_certificate" "api" {
+#  domain_name       = "test-uat.lhubsg.com"
+#  validation_method = "DNS"
+#}
+
+
+
+#aws_acm_certificate_validation resource can wait till the TLS certificate is issued
+#resource "aws_acm_certificate_validation" "api" {
+#  certificate_arn         = aws_acm_certificate.api.arn
+#  validation_record_fqdns = [for record in aws_route53_record.api_validation : record.fqdn]
+#}
+
+
+
+#Create an HTTPS listener on our load balancer
+#resource "aws_alb_listener" "https" {
+#  load_balancer_arn = aws_alb.main.arn
+#  port              = "443"
+#  protocol          = "HTTPS"
+  #certificate_arn   = aws_acm_certificate.api.arn
+  #certificate_arn   = "arn:aws:acm:ap-southeast-1:531606804770:certificate/0aedea6d-06ce-43be-8c58-e52e84e7e776"
+  #ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+#  default_action {
+#    type             = "forward"
+#    target_group_arn = aws_alb_target_group.app.arn
+#  }
+
+  # depends_on = [aws_acm_certificate.api]
+#}
+
+// Target group attachment
+
+# Attach the ALB target group to the ECS service
+#resource "aws_alb_target_group_attachment" "target_attach" {
+#  target_group_arn  = aws_alb_target_group.app.arn
+#  target_id         = aws_ecs_service.main.name
+#  port              = 80
+#}
+
+##################################################################################
+
+
+
+# ecs.tf
+
+resource "aws_ecs_cluster" "main" {
+  name = var.fargate_cluster_name
+}
+
+resource "aws_ecs_task_definition" "app" {
+  family                   = var.fargate_task_definition_name
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.fargate_cpu
+  memory                   = var.fargate_memory
+
+# tags = {
+#    Owner        = "xiong yong"
+ #   Project      = "payment service"
+ #   Environment = "prod"
+ # }
+  container_definitions    = jsonencode([
+  {
+      name      = "test-1-Container"
+      #image     = "nginx:latest"
+      image     = "531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-1:latest"
+      cpu       = 0
+      memory    = 512
+      essential = true
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        }
+      ]
+    }
+    #{
+    #  name      = "second"
+    #  #image     = "service-second"
+    #  image     = "531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/tms-ecr-repo-prod-test:tms-prod-test"
+    #  cpu       = 10
+    #  memory    = 256
+    #  essential = true
+    #  portMappings = [
+    #    {
+    #      containerPort = 443
+    #      hostPort      = 443
+    #    }
+    #  ]
+    #}
+  ])
+}
+
+resource "aws_ecs_service" "main" {
+  name            = var.fargate_service_name
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.app.arn
+  desired_count   = var.container_count
+  launch_type     = "FARGATE"
+
+#tags = {
+#    Owner        = "xiong yong"
+#    Project      = "payment service"
+#    Environment = "prod"
+#  }
+
+  network_configuration {
+    security_groups  = [aws_security_group.ecs_tasks.id]
+    subnets = [
+    aws_subnet.private_ap_southeast_1a.id,
+    aws_subnet.private_ap_southeast_1b.id
+  ]
+    assign_public_ip = true
+  }
+
+  load_balancer {
+    target_group_arn = aws_alb_target_group.app.arn
+    container_name   = "test-1-Container"
+    container_port   = var.container_port
+  }
+
+  depends_on = [aws_alb_listener.http, aws_iam_role_policy_attachment.ecs_task_execution_role]
+}
+
+-----------------------------------------------network
+# network.tf
+
+# Fetch AZs in the current region
+data "aws_availability_zones" "available" {
+}
+
+/*
+resource "aws_vpc" "main" {
+  cidr_block = var.vpc_cidr
+}
+*/
+
+# Creating private subnet each in a different AZ
+resource "aws_subnet" "private_ap_southeast_1a" {
+  #count             = var.az_count
+  cidr_block        = var.private_subnets_6A_cidr
+  availability_zone = data.aws_availability_zones.available.names[0]
+  vpc_id            = var.vpc_id
+
+  tags = {
+    Name = "NTUC-LHUB-PRIV-6A-test-1-ECS"
+  }
+}
+
+# Creating private subnet each in a different AZ
+resource "aws_subnet" "private_ap_southeast_1b" {
+  #count                   = var.az_count
+  cidr_block              = var.private_subnets_6B_cidr
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  vpc_id                  = var.vpc_id
+
+  tags = {
+    Name = "NTUC-LHUB-PRIV-6B-test-1-ECS"
+  }
+}
+/*
+resource "aws_subnet" "private_us_east_1b" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.32.0/19"
+  availability_zone = "us-east-1b"
+
+  tags = {
+    "Name" = "private-us-east-1b"
+  }
+}
+*/
+----------------------logs
+# logs.tf
+
+# Set up CloudWatch group and log stream and retain logs for 30 days
+resource "aws_cloudwatch_log_group" "test_log_group_1" {
+  name              = "/ecs/test-1-Container"
+  retention_in_days = 30
+
+  tags = {
+    Name = "ecs-test-log-group-1"
+  }
+}
+
+resource "aws_cloudwatch_log_stream" "test_log_stream_1" {
+  name           = "ecs-test-log-stream-1"
+  log_group_name = aws_cloudwatch_log_group.test_log_group_1.name
+}
+
+--------variables
+# variables.tf
+
+variable "aws_region" {
+  description = "The AWS region things are created in"
+  default     = "ap-southeast-1"
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block of the vpc"
+  default     = "10.10.0.0/16"
+}
+
+variable "private_subnets_6A_cidr" {
+  description = "CIDR block for Private Subnets 6A"
+  default     = "10.10.230.0/24"
+}
+
+variable "private_subnets_6B_cidr" {
+  description = "CIDR block for Private Subnets 6B"
+  default     = "10.10.240.0/24"
+}
+
+variable "private_subnets" {
+  description = "Number_of_private_subnets"
+  default = 2
+}
+
+variable "ecs_task_execution_role_name" {
+  description = "ECS task execution role name"
+  default = "test1EcsTaskExecutionRole"
+}
+
+variable "az_count" {
+  description = "Number of AZs to cover in a given region"
+  default     = "2"
+}
+
+variable "container_image" {
+  description = "Docker image to run in the ECS cluster"
+  default     = "nginx:latest"
+}
+
+variable "container_port" {
+  description = "Port exposed by the docker image to redirect traffic to"
+  default     = 80
+}
+
+variable "host_port" {
+  description = "Port exposed by the docker image to redirect traffic to"
+  default     = 80
+}
+
+variable "container_count" {
+  description = "Number of docker containers to run"
+  default     = 4
+}
+
+variable "health_check_path" {
+  default = "/"
+}
+
+variable "fargate_cpu" {
+  description = "Fargate instance CPU units to provision (1 vCPU = 1024 CPU units)"
+  default     = "2048"
+}
+
+variable "fargate_memory" {
+  description = "Fargate instance memory to provision (in MiB)"
+  default     = "8192"
+}
+
+variable "fargate_task_definition_name" {
+  description = "Fargate task definition name"
+  default     = "test-1-task-def"
+}
+
+variable "ecs_task_sg" {
+  description = "ECS Task SG"
+  default     = "test-1-SG"
+}
+
+variable "fargate_service_name" {
+  description = "Fargate service name"
+  default     = "test-1-service"
+}
+
+variable "fargate_cluster_name" {
+  description = "Fargate cluster name"
+  default     = "test-1-Cluster"
+}
+
+variable "alb_name" {
+  description = "ALB name"
+  default     = "test-1-ALB"
+}
+
+variable "alb_sg" {
+  description = "ALB SG"
+  default     = "test-1-ALB-SG"
+}
+
+variable "target_group_name" {
+  description = "Target group name"
+  default     = "test-1-TG"
+}
+
+variable "vpc_id" {
+  description = "VPC ID"
+  default     = "vpc-fbba5a9c"
+}
+
+variable "ASG" {
+  description = "ASG name"
+  default     = "test-1-ASG"
+}
+-------------autoscal
+# auto_scaling.tf
+/*
+resource "aws_appautoscaling_target" "target" {
+  service_namespace  = "ecs"
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.main.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  min_capacity       = 1
+  max_capacity       = 2
+}
+
+# Automatically scale capacity up by one
+resource "aws_appautoscaling_policy" "up" {
+  name               = "test_scale_up_1"
+  service_namespace  = "ecs"
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.main.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Maximum"
+
+    step_adjustment {
+      metric_interval_lower_bound = 0
+      scaling_adjustment          = 1
+    }
+  }
+
+  depends_on = [aws_appautoscaling_target.target]
+}
+
+# Automatically scale capacity down by one
+resource "aws_appautoscaling_policy" "down" {
+  name               = "test_scale_down_1"
+  service_namespace  = "ecs"
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.main.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Maximum"
+
+    step_adjustment {
+      metric_interval_upper_bound = 0
+      scaling_adjustment          = -1
+    }
+  }
+
+  depends_on = [aws_appautoscaling_target.target]
+}
+
+# CloudWatch alarm that triggers the autoscaling up policy
+resource "aws_cloudwatch_metric_alarm" "service_cpu_high" {
+  alarm_name          = "Course_Recommender_cpu_utilization_high"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "80"
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+    ServiceName = aws_ecs_service.main.name
+  }
+
+  alarm_actions = [aws_appautoscaling_policy.up.arn]
+}
+
+# CloudWatch alarm that triggers the autoscaling down policy
+resource "aws_cloudwatch_metric_alarm" "service_cpu_low" {
+  alarm_name          = "myapp_cpu_utilization_low"
+  comparison_operator = "LessThanOrEqualToThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "20"
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+    ServiceName = aws_ecs_service.main.name
+  }
+
+  alarm_actions = [aws_appautoscaling_policy.down.arn]
+}
+*/
+/*
+resource "aws_autoscaling_group" "app" {
+  name     = var.ASG
+  min_size = 1
+  max_size = 3
+
+  health_check_type = "EC2"
+
+  vpc_zone_identifier = [
+    aws_subnet.private_ap_southeast_1a.id,
+    aws_subnet.private_ap_southeast_1b.id
+  ]
+
+  target_group_arns = [aws_alb_target_group.app.arn]
+
+  mixed_instances_policy {
+    launch_template {
+      launch_template_specification {
+        launch_template_id = aws_launch_template.my_app_eg2.id
+      }
+      override {
+        instance_type = "t3.micro"
+      }
+    }
+  }
+}
+*/
+------bitbucket
+bitbucket-pipelines.yml
+image: python:latest
+
+pipelines:
+  branches:
+    uat:
+    - step:
+        name: Install pip and AWS CLI
+        script:
+          - pip install awscli
+    # - step:
+    #     name: SonarCloud Analysis
+    #     trigger: manual
+    #     clone:
+    #       depth: full
+    #     image: maven:3.8.4-openjdk-17
+    #     script:
+    #       - mkdir -p lib/
+    #       - cp src/main/resources/lib/SGQRGenerator-1.6.jar lib/
+    #       - mvn install:install-file -Dfile=lib/SGQRGenerator-1.6.jar -DgroupId=com.dbs.sgqr -DartifactId=generator -Dversion=1.6 -Dpackaging=jar
+    #       - mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+    #       - rm -rf lib/SGQRGenerator-1.6.jar
+    - step:
+        name: Build and Push Docker image
+        trigger: manual
+        services:
+            - docker
+        script:
+          - pip install awscli
+          - aws configure set aws_access_key_id "${AWS_ACCESS_KEY_ID}"
+          - aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}"
+          - aws configure set region ap-southeast-1
+          - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 709825985650.dkr.ecr.us-east-1.amazonaws.com
+          - CONTAINER_IMAGES="709825985650.dkr.ecr.us-east-1.amazonaws.com/center-for-internet-security/ubuntu2204:${CIS_Version}"
+          - for i in $(echo $CONTAINER_IMAGES | sed "s/,/ /g"); do docker pull $i; done
+          - docker tag 709825985650.dkr.ecr.us-east-1.amazonaws.com/center-for-internet-security/ubuntu2204:"${CIS_Version}" 709825985650.dkr.ecr.us-east-1.amazonaws.com/center-for-internet-security/ubuntu2204:latest
+          - docker images
+          - docker build -t 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-uat-ecr-repo:test-stripe-uat -f Dockerfile .
+          - docker tag 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-uat-ecr-repo:test-stripe-uat 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-uat-ecr-repo:test-stripe-uat
+          - aws configure set aws_access_key_id "${AWS_ACCESS_KEY_ID}"
+          - aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}"
+          - aws configure set region ap-southeast-1
+          - $(aws ecr get-login --no-include-email)
+          - docker push 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-uat-ecr-repo:test-stripe-uat
+    - step:
+        name: Deploy to UAT Environment
+        trigger: manual
+        script:
+          - pip install awscli
+          - aws configure set aws_access_key_id "${AWS_ACCESS_KEY_ID}"
+          - aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}"
+          - aws configure set region ap-southeast-1
+          - aws ecs update-service --cluster test-uat-Cluster --service test-uat-service --force-new-deployment
+
+    production:
+    - step:
+        name: Install pip and AWS CLI
+        script:
+          - pip install awscli
+    - step:
+        name: SonarCloud Analysis
+        trigger: manual
+        clone:
+          depth: full
+        image: maven:3.8.4-openjdk-17
+        script:
+          - mkdir -p lib/
+          - cp src/main/resources/lib/SGQRGenerator-1.6.jar lib/
+          - mvn install:install-file -Dfile=lib/SGQRGenerator-1.6.jar -DgroupId=com.dbs.sgqr -DartifactId=generator -Dversion=1.6 -Dpackaging=jar
+          - mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          - rm -rf lib/SGQRGenerator-1.6.jar
+    - step:
+        name: Build and Push Docker image
+        trigger: manual
+        services:
+            - docker
+        script:
+          - pip install awscli
+          - aws configure set aws_access_key_id "${AWS_ACCESS_KEY_ID}"
+          - aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}"
+          - aws configure set region ap-southeast-1
+          - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 709825985650.dkr.ecr.us-east-1.amazonaws.com
+          - CONTAINER_IMAGES="709825985650.dkr.ecr.us-east-1.amazonaws.com/center-for-internet-security/ubuntu2204:${CIS_Version}"
+          - for i in $(echo $CONTAINER_IMAGES | sed "s/,/ /g"); do docker pull $i; done
+          - docker tag 709825985650.dkr.ecr.us-east-1.amazonaws.com/center-for-internet-security/ubuntu2204:"${CIS_Version}" 709825985650.dkr.ecr.us-east-1.amazonaws.com/center-for-internet-security/ubuntu2204:latest
+          - docker images
+          - docker build -t 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-prod-ecr-repo:test-stripe-prod -f Dockerfile .
+          - docker tag 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-prod-ecr-repo:test-stripe-prod 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-prod-ecr-repo:test-stripe-prod
+          - aws configure set aws_access_key_id "${AWS_ACCESS_KEY_ID}"
+          - aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}"
+          - aws configure set region ap-southeast-1
+          - $(aws ecr get-login --no-include-email)
+          - docker push 531606804770.dkr.ecr.ap-southeast-1.amazonaws.com/test-prod-ecr-repo:test-stripe-prod
+    - step:
+        name: Deploy to PROD Environment
+        trigger: manual
+        script:
+          - pip install awscli
+          - aws configure set aws_access_key_id "${AWS_ACCESS_KEY_ID}"
+          - aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}"
+          - aws configure set region ap-southeast-1
+          - aws ecs update-service --cluster test-prod-Cluster --service test-prod-service --force-new-deployment
